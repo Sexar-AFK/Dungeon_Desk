@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: dungeon-desk-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dungeon_desk
+      POSTGRES_USER: dungeon_desk
+      POSTGRES_PASSWORD: dungeon_desk_dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - dungeon_desk_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dungeon_desk -d dungeon_desk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  dungeon_desk_db:
