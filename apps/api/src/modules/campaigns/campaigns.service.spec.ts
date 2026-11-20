@@ -18,7 +18,7 @@ describe('CampaignsService', () => {
   let campaignModel: {
     create: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
-    findUnique: ReturnType<typeof vi.fn>;
+    findFirst: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
 
@@ -26,7 +26,7 @@ describe('CampaignsService', () => {
     campaignModel = {
       create: vi.fn(),
       findMany: vi.fn(),
-      findUnique: vi.fn(),
+      findFirst: vi.fn(),
       update: vi.fn(),
     };
     service = new CampaignsService({
@@ -38,13 +38,14 @@ describe('CampaignsService', () => {
     campaignModel.create.mockResolvedValue(sampleCampaign);
 
     await expect(
-      service.create({ title: sampleCampaign.title }),
+      service.create({ title: sampleCampaign.title }, 'owner-1'),
     ).resolves.toEqual(sampleCampaign);
     expect(campaignModel.create).toHaveBeenCalledWith({
       data: {
         title: sampleCampaign.title,
         description: null,
         edition: 'D&D 5e · 2014',
+        owner: { connect: { id: 'owner-1' } },
       },
     });
   });
@@ -52,13 +53,14 @@ describe('CampaignsService', () => {
   it('filters the campaign list by status and case-insensitive search', async () => {
     campaignModel.findMany.mockResolvedValue([sampleCampaign]);
 
-    await service.findAll({
-      status: CampaignStatus.ACTIVE,
-      search: 'elturel',
-    });
+    await service.findAll(
+      { status: CampaignStatus.ACTIVE, search: 'elturel' },
+      'owner-1',
+    );
 
     expect(campaignModel.findMany).toHaveBeenCalledWith({
       where: {
+        ownerId: 'owner-1',
         status: CampaignStatus.ACTIVE,
         OR: [
           { title: { contains: 'elturel', mode: 'insensitive' } },
@@ -70,17 +72,18 @@ describe('CampaignsService', () => {
   });
 
   it('returns 404 for an unknown campaign', async () => {
-    campaignModel.findUnique.mockResolvedValue(null);
+    campaignModel.findFirst.mockResolvedValue(null);
 
-    await expect(service.findOne('missing')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(service.findOne('missing', 'owner-1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(campaignModel.findFirst).toHaveBeenCalledWith({
+      where: { id: 'missing', ownerId: 'owner-1' },
+    });
   });
 
   it('rejects an update that has no fields', async () => {
-    await expect(service.update('campaign-1', {})).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(campaignModel.findUnique).not.toHaveBeenCalled();
+    await expect(
+      service.update('campaign-1', {}, 'owner-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(campaignModel.findFirst).not.toHaveBeenCalled();
   });
 });

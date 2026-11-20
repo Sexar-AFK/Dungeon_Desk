@@ -10,3 +10,6 @@ coverage/
 .turbo/
 *.log
 data/
+backups/
+apps/api/backups/
+apps/api/var/mail/

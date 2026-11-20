@@ -16,7 +16,8 @@
     "format": "prettier --write .",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f db"
+    "db:logs": "docker compose logs -f db",
+    "db:backup": "pnpm --filter @dungeon-desk/api db:backup"
   },
   "devDependencies": {
     "prettier": "^3.6.2"

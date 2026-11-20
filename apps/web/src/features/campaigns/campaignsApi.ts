@@ -12,6 +12,66 @@ const apiUrl = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(
   "",
 );
 
+export type AuthenticatedUser = {
+  id: string;
+  email: string;
+  createdAt: string;
+};
+
+export function getAuthConfig() {
+  return request<{ registrationEnabled: boolean }>("/auth/config");
+}
+
+export function getCurrentUser() {
+  return request<AuthenticatedUser>("/auth/me");
+}
+
+export function signIn(input: { email: string; password: string }) {
+  return request<AuthenticatedUser>("/auth/sign-in", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function signUp(input: { email: string; password: string }) {
+  return request<{ message: string }>("/auth/sign-up", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function verifyEmail(token: string) {
+  return request<{ emailVerified: true }>("/auth/email/verify", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export function requestEmailVerification(email: string) {
+  return request<{ message: string }>("/auth/email/verification", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function requestPasswordReset(email: string) {
+  return request<{ message: string }>("/auth/password/forgot", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(input: { token: string; password: string }) {
+  return request<{ passwordReset: true }>("/auth/password/reset", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function signOut() {
+  return request<void>("/auth/sign-out", { method: "POST" });
+}
+
 const statusLabels: Record<CampaignStatusCode, Campaign["status"]> = {
   ACTIVE: "Activa",
   PAUSED: "En pausa",
@@ -115,6 +175,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
     response = await fetch(`${apiUrl}${path}`, {
       ...init,
+      credentials: "include",
       headers,
     });
   } catch {
@@ -136,6 +197,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     );
   }
 
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 

@@ -13,18 +13,19 @@ import { UpdateCampaignDto } from './dto/update-campaign.dto.js';
 export class CampaignsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(input: CreateCampaignDto) {
+  create(input: CreateCampaignDto, ownerId: string) {
     return this.prisma.campaign.create({
       data: {
         title: input.title,
         description: input.description || null,
         edition: input.edition || 'D&D 5e · 2014',
+        owner: { connect: { id: ownerId } },
       },
     });
   }
 
-  findAll(query: ListCampaignsQueryDto) {
-    const where: Prisma.CampaignWhereInput = {};
+  findAll(query: ListCampaignsQueryDto, ownerId: string) {
+    const where: Prisma.CampaignWhereInput = { ownerId };
 
     if (query.status) where.status = query.status;
     if (query.search) {
@@ -40,18 +41,20 @@ export class CampaignsService {
     });
   }
 
-  async findOne(id: string) {
-    const campaign = await this.prisma.campaign.findUnique({ where: { id } });
+  async findOne(id: string, ownerId: string) {
+    const campaign = await this.prisma.campaign.findFirst({
+      where: { id, ownerId },
+    });
     if (!campaign) throw new NotFoundException('Campaign not found.');
     return campaign;
   }
 
-  async update(id: string, input: UpdateCampaignDto) {
+  async update(id: string, input: UpdateCampaignDto, ownerId: string) {
     if (Object.keys(input).length === 0) {
       throw new BadRequestException('At least one field must be provided.');
     }
 
-    await this.findOne(id);
+    await this.findOne(id, ownerId);
     const data: Prisma.CampaignUpdateInput = {};
     if (input.title !== undefined) data.title = input.title;
     if (input.description !== undefined) {
@@ -66,8 +69,8 @@ export class CampaignsService {
     });
   }
 
-  async archive(id: string) {
-    await this.findOne(id);
+  async archive(id: string, ownerId: string) {
+    await this.findOne(id, ownerId);
     return this.prisma.campaign.update({
       where: { id },
       data: { status: CampaignStatus.ARCHIVED },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BrowserRouter,
@@ -7,6 +7,7 @@ import {
   Route,
   Routes,
   useNavigate,
+  useLocation,
   useParams,
 } from "react-router-dom";
 import { ArchiveCampaignDialog } from "./features/campaigns/ArchiveCampaignDialog";
@@ -17,6 +18,16 @@ import type {
 } from "./features/campaigns/campaign.types";
 import {
   ApiError,
+  getCurrentUser,
+  getAuthConfig,
+  signIn,
+  signOut,
+  signUp,
+  requestEmailVerification,
+  requestPasswordReset,
+  resetPassword as resetPasswordRequest,
+  verifyEmail as verifyEmailRequest,
+  type AuthenticatedUser,
   archiveCampaign as archiveCampaignRequest,
   createCampaign as createCampaignRequest,
   getCampaign,
@@ -48,10 +59,12 @@ type CampaignQueryState = {
 type AppProps = {
   theme: Theme;
   onToggleTheme: () => void;
+  user: AuthenticatedUser;
+  onSignOut: () => void;
 };
 
 /** Shared shell for all routes and the campaign query/mutation lifecycle. */
-function App({ theme, onToggleTheme }: AppProps) {
+function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
   const queryClient = useQueryClient();
   const campaignsQuery = useQuery({
     queryKey: CAMPAIGNS_QUERY_KEY,
@@ -128,12 +141,14 @@ function App({ theme, onToggleTheme }: AppProps) {
 
   return (
     <div className="app-shell">
-      <Sidebar />
+      <Sidebar user={user} onSignOut={onSignOut} />
       <div className="main-column">
         <Topbar
           onNewCampaign={openCreateCampaign}
           theme={theme}
           onToggleTheme={onToggleTheme}
+          user={user}
+          onSignOut={onSignOut}
         />
         {/* Keep the first release focused on campaign discovery and details. */}
         <main className="page-content" id="main-content">
@@ -192,7 +207,7 @@ function App({ theme, onToggleTheme }: AppProps) {
 }
 
 /** Desktop navigation; mobile uses the compact bottom bar below. */
-function Sidebar() {
+function Sidebar({ user, onSignOut }: { user: AuthenticatedUser; onSignOut: () => void }) {
   return (
     <aside className="sidebar" aria-label="Navegación principal">
       <Link className="brand" to="/" aria-label="Dungeon Desk, inicio">
@@ -232,10 +247,12 @@ function Sidebar() {
         <div className="profile-button">
           <span className="profile-avatar">AV</span>
           <span className="profile-copy">
-            <strong>Ariadna Vega</strong>
-            <small>Dungeon Master</small>
+            <strong title={user.email}>{user.email}</strong>
+            <small>Cuenta personal</small>
           </span>
-          <Icon name="more" size={18} className="muted-icon" />
+          <button className="sign-out-button" type="button" onClick={onSignOut}>
+            Salir
+          </button>
         </div>
       </div>
     </aside>
@@ -269,10 +286,14 @@ function Topbar({
   onNewCampaign,
   theme,
   onToggleTheme,
+  user,
+  onSignOut,
 }: {
   onNewCampaign: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  user: AuthenticatedUser;
+  onSignOut: () => void;
 }) {
   return (
     <header className="topbar">
@@ -309,9 +330,8 @@ function Topbar({
           <Icon name="plus" size={17} />
           <span>Nueva campaña</span>
         </button>
-        <span className="profile-avatar topbar-avatar" aria-hidden="true">
-          AV
-        </span>
+        <span className="topbar-user-email">{user.email}</span>
+        <button className="sign-out-mobile" type="button" onClick={onSignOut}>Salir</button>
       </div>
     </header>
   );
@@ -1005,6 +1025,232 @@ type AppRootProps = {
   hasSavedTheme: boolean;
 };
 
+function AuthGate({ theme, onToggleTheme }: Pick<AppProps, "theme" | "onToggleTheme">) {
+  const queryClient = useQueryClient();
+  const location = useLocation();
+  const authAction = location.pathname === "/verify-email"
+    ? "verify" as const
+    : location.pathname === "/reset-password"
+      ? "reset" as const
+      : null;
+  const userQuery = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: getCurrentUser,
+    retry: false,
+    enabled: authAction === null,
+  });
+  const signOutMutation = useMutation({
+    mutationFn: signOut,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["auth", "me"] }),
+  });
+
+  if (authAction) {
+    return (
+      <AuthActionScreen
+        action={authAction}
+        token={new URLSearchParams(location.search).get("token") ?? ""}
+      />
+    );
+  }
+  if (userQuery.isPending) {
+    return <div className="auth-state">Conectando con Dungeon Desk…</div>;
+  }
+  if (userQuery.isError) {
+    if (userQuery.error instanceof ApiError && userQuery.error.status === 401) {
+      return <AuthScreen />;
+    }
+    return (
+      <div className="auth-state" role="alert">
+        <p>No se pudo comprobar la sesión: {userQuery.error.message}</p>
+        <button className="button button-primary" onClick={() => void userQuery.refetch()}>
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <App
+      theme={theme}
+      onToggleTheme={onToggleTheme}
+      user={userQuery.data}
+      onSignOut={() => signOutMutation.mutate()}
+    />
+  );
+}
+
+type AuthView = "login" | "signup" | "forgot" | "resend";
+
+function AuthScreen() {
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<AuthView>("login");
+  const [feedback, setFeedback] = useState("");
+  const authConfig = useQuery({
+    queryKey: ["auth", "config"],
+    queryFn: getAuthConfig,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const registrationEnabled = authConfig.data?.registrationEnabled === true;
+  const authMutation = useMutation<
+    AuthenticatedUser | { message: string },
+    Error,
+    { email: string; password?: string }
+  >({
+    mutationFn: (credentials: { email: string; password?: string }) => {
+      if (view === "signup") {
+        return signUp({ email: credentials.email, password: credentials.password! });
+      }
+      if (view === "forgot") return requestPasswordReset(credentials.email);
+      if (view === "resend") return requestEmailVerification(credentials.email);
+      return signIn({ email: credentials.email, password: credentials.password! });
+    },
+    onSuccess: () => {
+      if (view === "login") {
+        void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      } else {
+        setFeedback(
+          view === "signup"
+            ? "Si puedes registrar esa dirección, recibirás un correo para confirmarla."
+            : view === "forgot"
+              ? "Si existe una cuenta con esa dirección, recibirás instrucciones para restablecer la contraseña."
+              : "Si hay una cuenta sin verificar con esa dirección, recibirás un enlace de confirmación.",
+        );
+        if (view === "signup") setView("login");
+      }
+    },
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email"));
+    const password = form.get("password");
+    authMutation.mutate({ email, ...(password ? { password: String(password) } : {}) });
+  }
+
+  const isPasswordEntry = view === "login" || view === "signup";
+  const title = view === "signup" ? "Crea tu cuenta" : view === "forgot" ? "Recupera tu cuenta" : view === "resend" ? "Confirma tu correo" : "Te damos la bienvenida";
+
+  return (
+    <main className="auth-screen">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="auth-brand-mark"><Icon name="dice" size={24} /></div>
+        <p className="auth-eyebrow">DUNGEON DESK</p>
+        <h1>{title}</h1>
+        <p className="auth-description">
+          {view === "signup"
+            ? "Regístrate y confirma tu correo para empezar."
+            : view === "forgot"
+              ? "Te enviaremos un enlace de un solo uso si encontramos la cuenta."
+              : view === "resend"
+                ? "Solicita otro enlace de confirmación."
+                : "Inicia sesión para continuar con tus campañas."}
+        </p>
+        <label className="auth-label" htmlFor="auth-email">Correo electrónico</label>
+        <input id="auth-email" className="auth-input" name="email" type="email" autoComplete="email" required maxLength={254} />
+        {isPasswordEntry && (
+          <>
+            <label className="auth-label" htmlFor="auth-password">Contraseña</label>
+            <input
+              id="auth-password"
+              className="auth-input"
+              name="password"
+              type="password"
+              autoComplete={view === "signup" ? "new-password" : "current-password"}
+              required
+              minLength={view === "signup" ? 12 : 1}
+              maxLength={128}
+            />
+          </>
+        )}
+        {authMutation.isError && <p className="auth-error" role="alert">{authMutation.error.message}</p>}
+        {feedback && <p className="auth-feedback" role="status">{feedback}</p>}
+        <button className="button button-primary auth-submit" type="submit" disabled={authMutation.isPending}>
+          {authMutation.isPending ? "Un momento…" : view === "signup" ? "Crear cuenta" : view === "forgot" ? "Enviar instrucciones" : view === "resend" ? "Enviar confirmación" : "Iniciar sesión"}
+        </button>
+        {view === "login" && (
+          <>
+            <button className="auth-switch" type="button" onClick={() => { authMutation.reset(); setFeedback(""); setView("forgot"); }}>
+              He olvidado mi contraseña
+            </button>
+            <button className="auth-switch" type="button" onClick={() => { authMutation.reset(); setFeedback(""); setView("resend"); }}>
+              No recibí el correo de confirmación
+            </button>
+          </>
+        )}
+        {view !== "login" && (
+          <button
+            className="auth-switch"
+            type="button"
+            onClick={() => { authMutation.reset(); setFeedback(""); setView("login"); }}
+          >
+            {view === "signup" ? "Ya tengo una cuenta · Iniciar sesión" : "Volver a iniciar sesión"}
+          </button>
+        )}
+        {view === "login" && registrationEnabled && (
+          <button className="auth-switch" type="button" onClick={() => { authMutation.reset(); setFeedback(""); setView("signup"); }}>
+            ¿Primera vez? Crear una cuenta
+          </button>
+        )}
+      </form>
+    </main>
+  );
+}
+
+function AuthActionScreen({ action, token }: { action: "verify" | "reset"; token: string }) {
+  const [complete, setComplete] = useState(false);
+  const actionMutation = useMutation<
+    { emailVerified: true } | { passwordReset: true },
+    Error,
+    string
+  >({
+    mutationFn: (password: string) =>
+      action === "verify"
+        ? verifyEmailRequest(token)
+        : resetPasswordRequest({ token, password }),
+    onSuccess: () => setComplete(true),
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    actionMutation.mutate(String(form.get("password") ?? ""));
+  }
+
+  return (
+    <main className="auth-screen">
+      <form className="auth-card" onSubmit={submit}>
+        <div className="auth-brand-mark"><Icon name="dice" size={24} /></div>
+        <p className="auth-eyebrow">DUNGEON DESK</p>
+        <h1>{complete ? "Todo listo" : action === "verify" ? "Confirma tu correo" : "Nueva contraseña"}</h1>
+        {complete ? (
+          <>
+            <p className="auth-description">{action === "verify" ? "Tu dirección de correo quedó confirmada." : "La contraseña se actualizó. Las sesiones anteriores se cerraron."}</p>
+            <Link className="button button-primary auth-submit" to="/">Ir a iniciar sesión</Link>
+          </>
+        ) : !token ? (
+          <p className="auth-error" role="alert">Falta el token del enlace. Solicita uno nuevo.</p>
+        ) : (
+          <>
+            <p className="auth-description">{action === "verify" ? "Pulsa para confirmar que controlas esta dirección." : "Elige una contraseña de al menos 12 caracteres."}</p>
+            {action === "reset" && (
+              <>
+                <label className="auth-label" htmlFor="reset-password">Nueva contraseña</label>
+                <input id="reset-password" className="auth-input" name="password" type="password" autoComplete="new-password" required minLength={12} maxLength={128} />
+              </>
+            )}
+            {actionMutation.isError && <p className="auth-error" role="alert">{actionMutation.error.message}</p>}
+            <button className="button button-primary auth-submit" type="submit" disabled={actionMutation.isPending}>
+              {actionMutation.isPending ? "Un momento…" : action === "verify" ? "Confirmar correo" : "Guardar contraseña"}
+            </button>
+          </>
+        )}
+      </form>
+    </main>
+  );
+}
+
 /** Owns the theme state and keeps the browser's color scheme in sync. */
 function AppRoot({
   initialTheme,
@@ -1039,7 +1285,7 @@ function AppRoot({
 
   return (
     <BrowserRouter>
-      <App theme={theme} onToggleTheme={toggleTheme} />
+      <AuthGate theme={theme} onToggleTheme={toggleTheme} />
     </BrowserRouter>
   );
 }

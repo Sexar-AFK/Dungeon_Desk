@@ -1,5 +1,4 @@
-// Campaign data for the first API slice. Ownership and memberships will be
-// added alongside authentication before multi-user access is enabled.
+// Campaign and account data. Memberships and shared campaign roles are future work.
 
 generator client {
   provider = "prisma-client"
@@ -25,6 +24,61 @@ model Campaign {
   status      CampaignStatus @default(ACTIVE)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
+  ownerId     String
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
 
   @@index([status, updatedAt])
+  @@index([ownerId, updatedAt])
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique @db.VarChar(254)
+  emailVerified Boolean      @default(false)
+  passwordHash  String       @db.VarChar(255)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  campaigns     Campaign[]
+  sessions      Session[]
+  emailTokens   EmailToken[]
+}
+
+model EmailToken {
+  // This is the SHA-256 of a single-use random token, never the raw token.
+  id          String   @id @db.VarChar(64)
+  purpose     String   @db.VarChar(32)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email       String   @db.VarChar(254)
+  fingerprint String?  @db.VarChar(64)
+  createdAt   DateTime
+  expiresAt   DateTime
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+model RateLimit {
+  key            String    @id @db.VarChar(512)
+  totalHits      Int
+  expiresAt      DateTime
+  isBlocked      Boolean   @default(false)
+  blockExpiresAt DateTime?
+
+  @@index([expiresAt])
+}
+
+model Session {
+  // The authentication package stores only the SHA-256 cookie-token hash here.
+  id           String   @id @db.VarChar(64)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  lastActiveAt DateTime
+  mfa          String?
+  metadata     Json?
+
+  @@index([userId])
+  @@index([expiresAt])
 }
