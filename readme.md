@@ -1,6 +1,6 @@
 # Dungeon Desk
 
-# Dungeon Desk — Informe de implementación de la versión 0.1
+# Dungeon Desk — Informe de implementación de la Alpha 0.1
 
 **Estado:** Implementada  
 **Fecha:** 2026-11-19  
