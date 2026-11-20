@@ -43,6 +43,7 @@ export class AuthController {
   getConfig() {
     return {
       registrationEnabled: process.env.ALLOW_PUBLIC_SIGNUP === 'true',
+      emailDelivery: process.env.SMTP_URL?.trim() ? 'smtp' : 'file',
     };
   }
 
@@ -55,13 +56,17 @@ export class AuthController {
       throw new ForbiddenException('Public registration is disabled.');
     }
     const user = await this.authService.register(body.email, body.password);
-    if (user && (await this.emailActionRateLimiter.allow('verification', user.email))) {
+    if (
+      user &&
+      (await this.emailActionRateLimiter.allow('verification', user.email))
+    ) {
       void this.emailVerificationService.send(user).catch((error: unknown) => {
         this.logger.error('Could not send an email verification link', error);
       });
     }
     return {
-      message: 'If this address can be registered, a verification email will be sent.',
+      message:
+        'If this address can be registered, a verification email will be sent.',
     };
   }
 
@@ -89,7 +94,9 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 3, ttl: 60 * 60_000, blockDuration: 60 * 60_000 } })
+  @Throttle({
+    default: { limit: 3, ttl: 60 * 60_000, blockDuration: 60 * 60_000 },
+  })
   @Post('email/verification')
   @HttpCode(202)
   requestVerification(@Body() body: EmailDto) {
@@ -99,22 +106,31 @@ export class AuthController {
         .then(async (user) => {
           if (
             user &&
-            (await this.emailActionRateLimiter.allow('verification', user.email))
+            (await this.emailActionRateLimiter.allow(
+              'verification',
+              user.email,
+            ))
           ) {
             await this.emailVerificationService.send(user);
           }
         })
         .catch((error: unknown) => {
-          this.logger.error('Could not process an email verification request', error);
+          this.logger.error(
+            'Could not process an email verification request',
+            error,
+          );
         });
     });
     return {
-      message: 'If this address has an unverified account, a verification email will be sent.',
+      message:
+        'If this address has an unverified account, a verification email will be sent.',
     };
   }
 
   @Public()
-  @Throttle({ default: { limit: 3, ttl: 60 * 60_000, blockDuration: 60 * 60_000 } })
+  @Throttle({
+    default: { limit: 3, ttl: 60 * 60_000, blockDuration: 60 * 60_000 },
+  })
   @Post('password/forgot')
   @HttpCode(202)
   forgotPassword(@Body() body: EmailDto) {
@@ -129,7 +145,10 @@ export class AuthController {
           error instanceof Error ? error.stack : String(error),
         );
       });
-    return { message: 'If this address has an account, password reset instructions will be sent.' };
+    return {
+      message:
+        'If this address has an account, password reset instructions will be sent.',
+    };
   }
 
   @Public()

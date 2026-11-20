@@ -19,7 +19,10 @@ export type AuthenticatedUser = {
 };
 
 export function getAuthConfig() {
-  return request<{ registrationEnabled: boolean }>("/auth/config");
+  return request<{
+    registrationEnabled: boolean;
+    emailDelivery: "smtp" | "file";
+  }>("/auth/config");
 }
 
 export function getCurrentUser() {
@@ -92,6 +95,7 @@ export function toCampaignView(record: CampaignRecord): Campaign {
 
   return {
     id: record.id,
+    ownerId: record.ownerId,
     title: record.title,
     description: record.description || "",
     longDescription:
@@ -151,6 +155,85 @@ export async function archiveCampaign(id: string): Promise<Campaign> {
     { method: "PATCH" },
   );
   return toCampaignView(record);
+}
+
+export type CampaignMember = {
+  userId: string;
+  email: string;
+  role: "DM" | "PLAYER";
+  createdAt: string;
+};
+
+export type CampaignInvitation = {
+  id: string;
+  email: string;
+  role: "PLAYER";
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type CreatedCampaignInvitation = CampaignInvitation & {
+  delivery: "smtp" | "file";
+};
+
+export function listCampaignMembers(campaignId: string) {
+  return request<CampaignMember[]>(
+    `/campaigns/${encodeURIComponent(campaignId)}/members`,
+  );
+}
+
+export function listCampaignInvitations(campaignId: string) {
+  return request<CampaignInvitation[]>(
+    `/campaigns/${encodeURIComponent(campaignId)}/invitations`,
+  );
+}
+
+export function inviteCampaignMember(campaignId: string, email: string) {
+  return request<CreatedCampaignInvitation>(
+    `/campaigns/${encodeURIComponent(campaignId)}/invitations`,
+    {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    },
+  );
+}
+
+export function revokeCampaignInvitation(
+  campaignId: string,
+  invitationId: string,
+) {
+  return request<{ revoked: true }>(
+    `/campaigns/${encodeURIComponent(campaignId)}/invitations/${encodeURIComponent(invitationId)}/revoke`,
+    { method: "POST" },
+  );
+}
+
+export function updateCampaignMemberRole(
+  campaignId: string,
+  userId: string,
+  role: "DM" | "PLAYER",
+) {
+  return request<CampaignMember>(
+    `/campaigns/${encodeURIComponent(campaignId)}/members/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify({ role }) },
+  );
+}
+
+export function removeCampaignMember(campaignId: string, userId: string) {
+  return request<{ removed: true }>(
+    `/campaigns/${encodeURIComponent(campaignId)}/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function respondToCampaignInvitation(
+  token: string,
+  decision: "accept" | "reject",
+) {
+  return request<{ accepted: true; campaignId: string } | { rejected: true }>(
+    `/campaign-invitations/${decision}`,
+    { method: "POST", body: JSON.stringify({ token }) },
+  );
 }
 
 /** Lets the detail page distinguish a missing record from other failures. */

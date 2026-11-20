@@ -1255,6 +1255,91 @@ p {
 .detail-session {
   min-height: 205px;
 }
+.campaign-members-panel {
+  align-self: start;
+  padding: 18px;
+}
+.campaign-members-panel .player-row {
+  gap: 9px;
+}
+.member-role-select {
+  max-width: 105px;
+  margin-left: auto;
+  padding: 6px 8px;
+  border: 1px solid #e5e0d6;
+  border-radius: 8px;
+  background: #fffefa;
+  color: #514d46;
+  font: inherit;
+  font-size: 10px;
+}
+.member-remove-button {
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #f7eeeb;
+  color: #965b4a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+.member-remove-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.member-invite-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #f0eee9;
+}
+.member-invite-form > label {
+  color: #777168;
+  font-size: 11px;
+  font-weight: 650;
+}
+.member-invite-form > div {
+  display: flex;
+  gap: 8px;
+}
+.member-invite-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 9px 11px;
+  border: 1px solid #e5e0d6;
+  border-radius: 8px;
+  background: #fffefa;
+  color: #514d46;
+  font: inherit;
+  font-size: 11px;
+}
+.member-invite-form .button {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 10px;
+}
+.member-feedback {
+  margin: 10px 0 0;
+  color: #777168;
+  font-size: 11px;
+}
+.pending-invitation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid #f0eee9;
+  color: #514d46;
+  font-size: 11px;
+}
+.pending-invitation small {
+  display: block;
+  margin-top: 3px;
+  color: #969087;
+  font-size: 9px;
+}
 .player-list {
   display: grid;
 }

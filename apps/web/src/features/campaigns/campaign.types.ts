@@ -9,6 +9,7 @@ export type Player = {
 /** UI model built from the campaign API response. */
 export type Campaign = {
   id: string;
+  ownerId: string;
   title: string;
   description: string;
   longDescription: string;
@@ -48,6 +49,7 @@ export type CampaignSaveInput = CreateCampaignInput & {
 /** Response shape returned by the REST API. */
 export type CampaignRecord = {
   id: string;
+  ownerId: string;
   title: string;
   description: string | null;
   edition: string;

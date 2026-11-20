@@ -1,72 +1,34 @@
 # Dungeon Desk
 
-# Dungeon Desk — Informe de actualización de la ALPHA 0.2
+# Dungeon Desk — Informe de actualización de la ALPHA 0.3
 
-**Estado:** Completada y validada localmente
-**Fecha:** 2026-11-20
-**Alcance:** cuentas, sesiones, verificación de correo, recuperación de contraseña y autorización por propietario; preparación de seguridad para uso local/LAN.
+**Estado:** Funcionalidad implementada y validada localmente
+**Alcance:** membresías de campaña, roles DM/jugador e invitaciones por correo.
 
 ## Resumen
 
-La versión 0.2 añade autenticación y separación de campañas por usuario sobre la base de campañas de la versión anterior. El propietario inicial se configura de forma explícita; las campañas existentes se conservaron y asignaron a esa cuenta al aplicar las migraciones.
+La versión 0.3 permite que varios usuarios participen en una campaña. El propietario es DM inicial; puede invitar jugadores, administrar miembros y asignar roles. La API aplica los permisos por campaña y el frontend ofrece las acciones disponibles según el rol.
 
-La versión está comprobada en el entorno local. **No significa que el sistema esté listo para exponerse a Internet.**
+## Cambios implementados
 
-## Funcionalidad implementada
+- Membresías con roles `DM` y `PLAYER`; las campañas existentes conservan el acceso de sus propietarios como DM.
+- Invitaciones por correo con enlaces de un solo uso, expiración de siete días, aceptación, rechazo y revocación.
+- Listado y retirada de miembros, cambio de roles y autorización en backend para las operaciones de campaña.
+- Interfaz web para consultar miembros, invitar, revocar invitaciones, administrar roles y aceptar o rechazar invitaciones.
+- La respuesta de invitación indica si el mensaje fue aceptado por SMTP o guardado localmente como `.eml`.
 
-- Registro e inicio/cierre de sesión desde la web.
-- Sesiones persistentes en PostgreSQL; la cookie es `HttpOnly`, `SameSite=Lax` y usa `Secure` en producción.
-- Verificación de correo antes de permitir el inicio de sesión. Los enlaces son de un solo uso y se almacenan en base de datos mediante hashes.
-- Recuperación de contraseña con enlace de un solo uso; al cambiarla se revocan las sesiones anteriores.
-- Contraseñas protegidas con scrypt mediante `@nestjs/authentication`.
-- Campañas asociadas obligatoriamente a un propietario. Listado, detalle, edición y archivado quedan limitados a las campañas del usuario autenticado.
-- Protección CSRF, Helmet, orígenes confiables explícitos y límites de solicitudes compartidos mediante PostgreSQL, incluidos límites por correo para acciones de envío.
-- Scripts para crear al propietario inicial y para backups cifrados/restauración.
+## Verificaciones
 
-## API de autenticación
-
-| Método | Ruta | Uso |
-| --- | --- | --- |
-| `GET` | `/auth/config` | Indica si el registro está habilitado. |
-| `POST` | `/auth/sign-up` | Solicitar registro y verificación de correo. |
-| `POST` | `/auth/sign-in` | Iniciar sesión; solo acepta cuentas verificadas. |
-| `POST` | `/auth/sign-out` | Cerrar la sesión actual. |
-| `GET` | `/auth/me` | Consultar la sesión actual. |
-| `POST` | `/auth/email/verify` | Confirmar un enlace de verificación. |
-| `POST` | `/auth/email/verification` | Solicitar otro enlace de verificación sin revelar si existe la cuenta. |
-| `POST` | `/auth/password/forgot` | Solicitar recuperación sin revelar si existe la cuenta. |
-| `POST` | `/auth/password/reset` | Restablecer contraseña con un token válido. |
-
-## Migraciones y cuenta inicial
-
-Se aplicaron las migraciones de propiedad de campañas, usuarios/sesiones, verificación de correo, tokens de recuperación y contadores de rate limiting. Las campañas previas permanecen en la base de datos y se asignaron al propietario inicial.
-
-El propietario se activa con `INITIAL_OWNER_EMAIL` y `INITIAL_OWNER_PASSWORD` en `apps/api/.env` y el comando:
-
-```bash
-pnpm --filter @dungeon-desk/api db:setup-owner
-```
-
-El comando solo puede activar una vez la cuenta reservada y guarda la contraseña como hash. Tras ejecutarlo, se debe quitar `INITIAL_OWNER_PASSWORD` del `.env`.
-
-## Verificaciones realizadas
-
-- Prisma: esquema validado y migraciones aplicadas en la base local.
-- API: build y lint correctos; 8 pruebas unitarias aprobadas.
+- Migración aplicada y verificada en PostgreSQL local.
+- API: build y lint correctos; 14 pruebas unitarias y 3 pruebas e2e aprobadas.
 - Web: build de producción correcto.
-- Prueba integrada local: verificación de correo y rechazo de reutilizar el token, inicio/cierre de sesión, protección CSRF, aislamiento entre dos usuarios, recuperación de contraseña y revocación de sesiones anteriores.
-- Las cuentas, campañas y correos temporales de esa prueba se eliminaron al terminar.
-- Se comprobó el inicio/cierre de sesión desde `http://localhost:5173` después de añadir los orígenes locales por defecto a la configuración de sesión.
+- Flujos de membresía e invitación comprobados localmente; se limpiaron los datos temporales.
 
-## Límites y preparación para un despliegue futuro
+## Configuración de correo pendiente
 
-- En desarrollo, el correo se escribe como archivos `.eml` en `apps/api/var/mail`; esos archivos contienen enlaces secretos y no deben compartirse.
-- El registro público se habilita explícitamente con `ALLOW_PUBLIC_SIGNUP=true`; en producción requiere además SMTP y `APP_PUBLIC_URL` HTTPS.
-- Los scripts de backup cifrado/restauración están añadidos, pero no se ejecutaron ni se probó una restauración. Tampoco se configuró su programación automática.
-- HTTPS, dominio, reverse proxy, firewall, TLS de PostgreSQL, monitorización y revisión externa siguen pendientes para cualquier exposición pública.
-- Personajes, membresías/invitaciones, notas y sesiones de juego todavía no están implementados.
+En el entorno actual no hay `SMTP_URL` ni `MAIL_FROM` configurados. Por defecto, los mensajes se guardan en `apps/api/var/mail` y **no se envían por Internet**. Para habilitar la entrega real, configura credenciales SMTP y un remitente aceptado por el proveedor en `apps/api/.env`, y reinicia la API. Si los jugadores acceden desde la LAN, configura también `APP_PUBLIC_URL` con una dirección alcanzable por ellos. No guardes ni compartas las credenciales en el repositorio.
 
-**Resultado:** la 0.2 queda completada para desarrollo y validación local. Mantén el servicio en una red de confianza; no lo expongas a Internet hasta completar la configuración y revisión de despliegue.
+---
 
 # ReadMe Main
 

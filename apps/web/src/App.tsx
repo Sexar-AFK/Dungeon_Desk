@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BrowserRouter,
@@ -11,6 +11,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { ArchiveCampaignDialog } from "./features/campaigns/ArchiveCampaignDialog";
+import { CampaignMembersPanel } from "./features/campaigns/CampaignMembersPanel";
 import { CampaignDialog } from "./features/campaigns/CampaignDialog";
 import type {
   Campaign,
@@ -33,6 +34,8 @@ import {
   getCampaign,
   listCampaigns,
   updateCampaign as updateCampaignRequest,
+  listCampaignMembers,
+  respondToCampaignInvitation,
 } from "./features/campaigns/campaignsApi";
 import { Icon } from "./lib/Icon";
 import { ThemeToggle } from "./features/theme/ThemeToggle";
@@ -177,6 +180,7 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
               path="/campaigns/:campaignId"
               element={
                 <CampaignDetail
+                  currentUserId={user.id}
                   onEdit={openEditCampaign}
                   onArchive={handleArchiveCampaign}
                 />
@@ -719,9 +723,11 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
 /** Loads a campaign directly so deep links and refreshes also work. */
 function CampaignDetail({
+  currentUserId,
   onEdit,
   onArchive,
 }: {
+  currentUserId: string;
   onEdit: (campaign: Campaign) => void;
   onArchive: (id: string) => Promise<void>;
 }) {
@@ -730,6 +736,11 @@ function CampaignDetail({
   const campaignQuery = useQuery({
     queryKey: ["campaign", campaignId],
     queryFn: () => getCampaign(campaignId!),
+    enabled: Boolean(campaignId),
+  });
+  const membersQuery = useQuery({
+    queryKey: ["campaign-members", campaignId],
+    queryFn: () => listCampaignMembers(campaignId!),
     enabled: Boolean(campaignId),
   });
 
@@ -755,6 +766,9 @@ function CampaignDetail({
 
   const campaign = campaignQuery.data;
   if (!campaign) return <CampaignNotFound />;
+  const currentMembership = membersQuery.data?.find((member) => member.userId === currentUserId);
+  const canManageCampaign = currentMembership?.role === "DM";
+  const playerCount = membersQuery.data?.filter((member) => member.role === "PLAYER").length ?? 0;
 
   return (
     <>
@@ -781,21 +795,21 @@ function CampaignDetail({
             <h1>{campaign.title}</h1>
             <p className="detail-description">{campaign.description}</p>
             <div className="detail-hero-actions">
-              <button
+              {canManageCampaign && <button
                 className="button button-light"
                 type="button"
                 onClick={() => onEdit(campaign)}
               >
                 <Icon name="scroll" size={16} /> Editar detalles
-              </button>
-              <button
+              </button>}
+              {canManageCampaign && <button
                 className="button button-danger"
                 type="button"
                 onClick={() => setArchiveDialogOpen(true)}
                 disabled={campaign.statusCode === "ARCHIVED"}
               >
                 {campaign.statusCode === "ARCHIVED" ? "Archivada" : "Archivar"}
-              </button>
+              </button>}
             </div>
           </div>
         </section>
@@ -803,7 +817,7 @@ function CampaignDetail({
           <DetailStat
             icon="users"
             label="Jugadores"
-            value={String(campaign.players.length).padStart(2, "0")}
+            value={String(playerCount).padStart(2, "0")}
           />
           <DetailStat
             icon="calendar"
@@ -817,46 +831,11 @@ function CampaignDetail({
           />
         </section>
         <div className="detail-content-grid">
-          <section className="panel detail-players">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">EL GRUPO</p>
-                <h2>Jugadores</h2>
-              </div>
-              <button
-                className="button button-quiet"
-                type="button"
-                disabled
-                title="Disponible en una siguiente etapa"
-              >
-                <Icon name="plus" size={16} /> Invitar
-              </button>
-            </div>
-            {campaign.players.length ? (
-              <div className="player-list">
-                {campaign.players.map((player) => (
-                  <div className="player-row" key={player.initials}>
-                    <span className={`player-avatar ${player.tone}`}>
-                      {player.initials}
-                    </span>
-                    <span className="player-copy">
-                      <strong>{player.name}</strong>
-                      <small>{player.character}</small>
-                    </span>
-                    <span className="player-role">Jugador</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="detail-empty">
-                <Icon name="users" size={22} />
-                <p>Aún no hay jugadores en esta campaña.</p>
-                <span>
-                  La gestión de miembros estará disponible próximamente.
-                </span>
-              </div>
-            )}
-          </section>
+          <CampaignMembersPanel
+            campaignId={campaign.id}
+            currentUserId={currentUserId}
+            ownerId={campaign.ownerId}
+          />
           <section className="panel detail-session">
             <div className="panel-heading">
               <div>
@@ -1028,6 +1007,7 @@ type AppRootProps = {
 function AuthGate({ theme, onToggleTheme }: Pick<AppProps, "theme" | "onToggleTheme">) {
   const queryClient = useQueryClient();
   const location = useLocation();
+  const invitationAction = location.pathname === "/accept-invitation";
   const authAction = location.pathname === "/verify-email"
     ? "verify" as const
     : location.pathname === "/reset-password"
@@ -1037,7 +1017,7 @@ function AuthGate({ theme, onToggleTheme }: Pick<AppProps, "theme" | "onToggleTh
     queryKey: ["auth", "me"],
     queryFn: getCurrentUser,
     retry: false,
-    enabled: authAction === null,
+    enabled: authAction === null && !invitationAction,
   });
   const signOutMutation = useMutation({
     mutationFn: signOut,
@@ -1051,6 +1031,9 @@ function AuthGate({ theme, onToggleTheme }: Pick<AppProps, "theme" | "onToggleTh
         token={new URLSearchParams(location.search).get("token") ?? ""}
       />
     );
+  }
+  if (invitationAction) {
+    return <InvitationActionScreen token={new URLSearchParams(location.search).get("token") ?? ""} />;
   }
   if (userQuery.isPending) {
     return <div className="auth-state">Conectando con Dungeon Desk…</div>;
@@ -1083,6 +1066,7 @@ type AuthView = "login" | "signup" | "forgot" | "resend";
 
 function AuthScreen() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [view, setView] = useState<AuthView>("login");
   const [feedback, setFeedback] = useState("");
   const authConfig = useQuery({
@@ -1092,6 +1076,11 @@ function AuthScreen() {
     retry: false,
   });
   const registrationEnabled = authConfig.data?.registrationEnabled === true;
+  const emailDeliveryHint = authConfig.data
+    ? authConfig.data.emailDelivery === "smtp"
+      ? " Revisa también la carpeta de correo no deseado."
+      : " En este entorno no se envía por Internet: revisa apps/api/var/mail en el PC anfitrión."
+    : "";
   const authMutation = useMutation<
     AuthenticatedUser | { message: string },
     Error,
@@ -1108,14 +1097,19 @@ function AuthScreen() {
     onSuccess: () => {
       if (view === "login") {
         void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+        const pendingInvitation = sessionStorage.getItem("pendingCampaignInvitation");
+        if (pendingInvitation) {
+          sessionStorage.removeItem("pendingCampaignInvitation");
+          navigate(`/accept-invitation?token=${encodeURIComponent(pendingInvitation)}`);
+        }
       } else {
-        setFeedback(
+        const message =
           view === "signup"
             ? "Si puedes registrar esa dirección, recibirás un correo para confirmarla."
             : view === "forgot"
               ? "Si existe una cuenta con esa dirección, recibirás instrucciones para restablecer la contraseña."
-              : "Si hay una cuenta sin verificar con esa dirección, recibirás un enlace de confirmación.",
-        );
+              : "Si hay una cuenta sin verificar con esa dirección, recibirás un enlace de confirmación.";
+        setFeedback(`${message}${emailDeliveryHint}`);
         if (view === "signup") setView("login");
       }
     },
@@ -1194,6 +1188,97 @@ function AuthScreen() {
           </button>
         )}
       </form>
+    </main>
+  );
+}
+
+function InvitationActionScreen({ token }: { token: string }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const userQuery = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: getCurrentUser,
+    retry: false,
+  });
+  const invitationMutation = useMutation({
+    mutationFn: (decision: "accept" | "reject") => respondToCampaignInvitation(token, decision),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      if ("campaignId" in result) {
+        await queryClient.invalidateQueries({ queryKey: ["campaign-members", result.campaignId] });
+        navigate(`/campaigns/${result.campaignId}`);
+      } else {
+        navigate("/");
+      }
+    },
+  });
+
+  if (!token) {
+    return <InvitationMessage title="Enlace incompleto" message="Falta el código de invitación. Solicita al DM que envíe una nueva invitación." />;
+  }
+  if (userQuery.isPending) return <div className="auth-state">Comprobando tu sesión…</div>;
+  if (userQuery.isError) {
+    if (userQuery.error instanceof ApiError && userQuery.error.status === 401) {
+      return (
+        <InvitationMessage
+          title="Tienes una invitación"
+          message="Inicia sesión con el correo al que se envió la invitación para aceptarla."
+          action={(
+            <button
+              className="button button-primary auth-submit"
+              type="button"
+              onClick={() => {
+                sessionStorage.setItem("pendingCampaignInvitation", token);
+                navigate("/");
+              }}
+            >
+              Iniciar sesión
+            </button>
+          )}
+        />
+      );
+    }
+    return <InvitationMessage title="No pudimos comprobar tu sesión" message={userQuery.error.message} />;
+  }
+
+  return (
+    <main className="auth-screen">
+      <section className="auth-card">
+        <div className="auth-brand-mark"><Icon name="users" size={24} /></div>
+        <p className="auth-eyebrow">DUNGEON DESK</p>
+        <h1>Invitación a campaña</h1>
+        <p className="auth-description">Sesión iniciada como {userQuery.data.email}. Solo la cuenta con el correo invitado puede aceptar.</p>
+        {invitationMutation.error && <p className="auth-error" role="alert">{invitationMutation.error.message}</p>}
+        <button className="button button-primary auth-submit" type="button" disabled={invitationMutation.isPending} onClick={() => invitationMutation.mutate("accept")}>
+          Aceptar invitación
+        </button>
+        <button className="auth-switch" type="button" disabled={invitationMutation.isPending} onClick={() => invitationMutation.mutate("reject")}>
+          Rechazar invitación
+        </button>
+        <button className="auth-switch" type="button" onClick={() => navigate("/")}>Volver al inicio</button>
+      </section>
+    </main>
+  );
+}
+
+function InvitationMessage({
+  title,
+  message,
+  action,
+}: {
+  title: string;
+  message: string;
+  action?: ReactNode;
+}) {
+  return (
+    <main className="auth-screen">
+      <section className="auth-card">
+        <div className="auth-brand-mark"><Icon name="users" size={24} /></div>
+        <p className="auth-eyebrow">DUNGEON DESK</p>
+        <h1>{title}</h1>
+        <p className="auth-description">{message}</p>
+        {action}
+      </section>
     </main>
   );
 }

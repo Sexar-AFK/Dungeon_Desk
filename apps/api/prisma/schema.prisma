@@ -1,4 +1,4 @@
-// Campaign and account data. Memberships and shared campaign roles are future work.
+// Campaign, account, and campaign access data.
 
 generator client {
   provider = "prisma-client"
@@ -16,31 +16,70 @@ enum CampaignStatus {
   ARCHIVED
 }
 
+enum CampaignRole {
+  DM
+  PLAYER
+}
+
 model Campaign {
-  id          String         @id @default(cuid())
-  title       String         @db.VarChar(80)
-  description String?        @db.VarChar(500)
-  edition     String         @default("D&D 5e · 2014") @db.VarChar(80)
-  status      CampaignStatus @default(ACTIVE)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id          String               @id @default(cuid())
+  title       String               @db.VarChar(80)
+  description String?              @db.VarChar(500)
+  edition     String               @default("D&D 5e · 2014") @db.VarChar(80)
+  status      CampaignStatus       @default(ACTIVE)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
   ownerId     String
-  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  owner       User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  memberships CampaignMembership[]
+  invitations CampaignInvitation[]
 
   @@index([status, updatedAt])
   @@index([ownerId, updatedAt])
 }
 
 model User {
-  id            String       @id @default(cuid())
-  email         String       @unique @db.VarChar(254)
-  emailVerified Boolean      @default(false)
-  passwordHash  String       @db.VarChar(255)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  campaigns     Campaign[]
-  sessions      Session[]
-  emailTokens   EmailToken[]
+  id              String               @id @default(cuid())
+  email           String               @unique @db.VarChar(254)
+  emailVerified   Boolean              @default(false)
+  passwordHash    String               @db.VarChar(255)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  campaigns       Campaign[]
+  memberships     CampaignMembership[]
+  sentInvitations CampaignInvitation[] @relation("CampaignInvitationSender")
+  sessions        Session[]
+  emailTokens     EmailToken[]
+}
+
+model CampaignMembership {
+  campaignId String
+  userId     String
+  role       CampaignRole @default(PLAYER)
+  createdAt  DateTime     @default(now())
+  campaign   Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, userId])
+  @@index([userId, createdAt])
+}
+
+model CampaignInvitation {
+  id              String       @id @default(cuid())
+  campaignId      String
+  invitedByUserId String
+  email           String       @db.VarChar(254)
+  role            CampaignRole @default(PLAYER)
+  tokenHash       String       @unique @db.VarChar(64)
+  createdAt       DateTime     @default(now())
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  campaign        Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  invitedBy       User         @relation("CampaignInvitationSender", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([campaignId, email, expiresAt])
+  @@index([invitedByUserId, createdAt])
 }
 
 model EmailToken {

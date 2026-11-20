@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -8,10 +9,13 @@ import {
   Query,
 } from '@nestjs/common';
 import { CurrentUser } from '@nestjs/authentication';
+import { Throttle } from '@nestjs/throttler';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { CampaignsService } from './campaigns.service.js';
 import { CreateCampaignDto } from './dto/create-campaign.dto.js';
+import { CreateInvitationDto } from './dto/create-invitation.dto.js';
 import { ListCampaignsQueryDto } from './dto/list-campaigns-query.dto.js';
+import { UpdateCampaignMemberDto } from './dto/update-campaign-member.dto.js';
 import { UpdateCampaignDto } from './dto/update-campaign.dto.js';
 
 /** HTTP endpoints for the first campaign-management slice. */
@@ -36,10 +40,7 @@ export class CampaignsController {
   }
 
   @Get(':id')
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.campaignsService.findOne(id, user.id);
   }
 
@@ -54,10 +55,65 @@ export class CampaignsController {
 
   /** Archive rather than hard-delete so campaign data can be recovered later. */
   @Patch(':id/archive')
-  archive(
+  archive(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.campaignsService.archive(id, user.id);
+  }
+
+  @Get(':id/members')
+  listMembers(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.campaignsService.listMembers(id, user.id);
+  }
+
+  @Post(':id/invitations')
+  @Throttle({
+    default: { limit: 10, ttl: 60 * 60_000, blockDuration: 60 * 60_000 },
+  })
+  invite(
+    @Param('id') id: string,
+    @Body() input: CreateInvitationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.invite(id, input, user.id);
+  }
+
+  @Get(':id/invitations')
+  listInvitations(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.campaignsService.archive(id, user.id);
+    return this.campaignsService.listInvitations(id, user.id);
+  }
+
+  @Post(':id/invitations/:invitationId/revoke')
+  revokeInvitation(
+    @Param('id') id: string,
+    @Param('invitationId') invitationId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.revokeInvitation(id, invitationId, user.id);
+  }
+
+  @Patch(':id/members/:memberId')
+  updateMemberRole(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @Body() input: UpdateCampaignMemberDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.updateMemberRole(
+      id,
+      memberId,
+      input.role,
+      user.id,
+    );
+  }
+
+  @Delete(':id/members/:memberId')
+  removeMember(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.removeMember(id, memberId, user.id);
   }
 }
