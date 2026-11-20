@@ -1,0 +1,304 @@
+/*
+ * Dark theme overrides live in one place so the light-theme component styles
+ * remain easy to scan. The shared palette is declared in src/index.css.
+ */
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .app-shell {
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+:root[data-theme="dark"] .sidebar {
+  background: var(--surface-sidebar);
+}
+
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .mobile-nav {
+  background: rgb(30 31 27 / 94%);
+}
+
+:root[data-theme="dark"] .mobile-nav {
+  box-shadow: 0 -5px 16px rgb(0 0 0 / 18%);
+}
+
+:root[data-theme="dark"] .brand-mark {
+  color: #28231a;
+  background: #d0ad6d;
+}
+
+:root[data-theme="dark"] .workspace-switcher,
+:root[data-theme="dark"] .summary-card,
+:root[data-theme="dark"] .campaign-card,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .detail-stats,
+:root[data-theme="dark"] .search-field,
+:root[data-theme="dark"] .campaign-dialog,
+:root[data-theme="dark"] .campaign-form input,
+:root[data-theme="dark"] .campaign-form select,
+:root[data-theme="dark"] .campaign-form textarea {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .workspace-avatar,
+:root[data-theme="dark"] .summary-icon.gold,
+:root[data-theme="dark"] .summary-icon.blue,
+:root[data-theme="dark"] .summary-icon.sage,
+:root[data-theme="dark"] .panel-icon,
+:root[data-theme="dark"] .note-icon,
+:root[data-theme="dark"] .detail-stat-icon,
+:root[data-theme="dark"] .empty-state-icon,
+:root[data-theme="dark"] .dialog-mark {
+  background: #35342d;
+  color: #d5b879;
+}
+
+:root[data-theme="dark"] .sidebar-tip {
+  border-color: #444036;
+  background: linear-gradient(145deg, #2b2922, #24231f);
+}
+
+:root[data-theme="dark"] .tip-icon {
+  background: #413a2c;
+  color: #d5b879;
+}
+
+:root[data-theme="dark"] .nav-item {
+  color: #b6b1a7;
+}
+
+:root[data-theme="dark"] .nav-item:hover,
+:root[data-theme="dark"] .icon-button:hover,
+:root[data-theme="dark"] .filter-tab:hover {
+  border-color: #41423b;
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .nav-item.is-active,
+:root[data-theme="dark"] .filter-tab.selected {
+  background: #35352e;
+  color: #f1e6ce;
+}
+
+:root[data-theme="dark"] .nav-item.is-active svg,
+:root[data-theme="dark"] .welcome-row h1 span,
+:root[data-theme="dark"] .text-link {
+  color: #d5b879;
+}
+
+:root[data-theme="dark"] .text-link:hover {
+  color: #ecd39f;
+}
+
+:root[data-theme="dark"] .icon-button {
+  color: #c2bdb2;
+}
+
+:root[data-theme="dark"] .button-primary:hover {
+  background: #d9b979;
+}
+
+:root[data-theme="dark"] .button-secondary,
+:root[data-theme="dark"] .button-danger,
+:root[data-theme="dark"] .filter-tab span,
+:root[data-theme="dark"] .player-role {
+  border-color: var(--line);
+  background: var(--surface-muted);
+  color: #e6e0d5;
+}
+
+:root[data-theme="dark"] .button-danger {
+  background: #9a4940;
+  color: #fff2ef;
+}
+
+:root[data-theme="dark"] .button-danger:hover {
+  background: #b25b51;
+}
+
+:root[data-theme="dark"] .button-secondary:hover,
+:root[data-theme="dark"] .button-quiet:hover {
+  background: var(--surface-hover);
+}
+
+:root[data-theme="dark"] .button-quiet {
+  color: #d1c8b8;
+}
+
+:root[data-theme="dark"] .welcome-row h1,
+:root[data-theme="dark"] .page-title-row h1,
+:root[data-theme="dark"] .section-heading h2,
+:root[data-theme="dark"] .panel-heading h2,
+:root[data-theme="dark"] .campaign-about h2,
+:root[data-theme="dark"] .campaign-card h3,
+:root[data-theme="dark"] .summary-main strong,
+:root[data-theme="dark"] .workspace-copy strong,
+:root[data-theme="dark"] .profile-copy strong,
+:root[data-theme="dark"] .sidebar-tip strong,
+:root[data-theme="dark"] .create-campaign-card strong,
+:root[data-theme="dark"] .session-info > strong,
+:root[data-theme="dark"] .player-copy strong,
+:root[data-theme="dark"] .detail-stat strong,
+:root[data-theme="dark"] .campaign-dialog h2,
+:root[data-theme="dark"] .form-label,
+:root[data-theme="dark"] .empty-state h1,
+:root[data-theme="dark"] .empty-state h2 {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .brand-copy span,
+:root[data-theme="dark"] .topbar-context,
+:root[data-theme="dark"] .topbar-context strong,
+:root[data-theme="dark"] .welcome-copy,
+:root[data-theme="dark"] .summary-main > span,
+:root[data-theme="dark"] .summary-main small,
+:root[data-theme="dark"] .campaign-description,
+:root[data-theme="dark"] .campaign-card-meta,
+:root[data-theme="dark"] .session-info > span,
+:root[data-theme="dark"] .panel-footnote,
+:root[data-theme="dark"] .note-meta,
+:root[data-theme="dark"] .filter-tab,
+:root[data-theme="dark"] .empty-state p:not(.eyebrow),
+:root[data-theme="dark"] .back-link,
+:root[data-theme="dark"] .detail-stat small,
+:root[data-theme="dark"] .player-copy small,
+:root[data-theme="dark"] .sidebar-tip p,
+:root[data-theme="dark"] .dialog-intro {
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .campaign-card .campaign-description:empty::before {
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .nav-label,
+:root[data-theme="dark"] .eyebrow,
+:root[data-theme="dark"] .workspace-copy span,
+:root[data-theme="dark"] .profile-copy small,
+:root[data-theme="dark"] .campaign-card-meta svg,
+:root[data-theme="dark"] .search-field,
+:root[data-theme="dark"] .search-field input::placeholder,
+:root[data-theme="dark"] .form-label span {
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .sidebar-tip p,
+:root[data-theme="dark"] .dm-note,
+:root[data-theme="dark"] .session-info > strong,
+:root[data-theme="dark"] .player-copy strong,
+:root[data-theme="dark"] .detail-stat strong,
+:root[data-theme="dark"] .create-campaign-card {
+  color: #e1dbcf;
+}
+
+:root[data-theme="dark"] .create-campaign-card,
+:root[data-theme="dark"] .empty-state {
+  border-color: #414139;
+  background: var(--surface-soft);
+}
+
+:root[data-theme="dark"] .create-campaign-card:hover {
+  border-color: #a68b5b;
+  background: #2b2a23;
+}
+
+:root[data-theme="dark"] .create-card-icon,
+:root[data-theme="dark"] .session-date {
+  border-color: var(--line);
+  background: #30312a;
+  color: #d4b577;
+}
+
+:root[data-theme="dark"] .summary-decoration {
+  color: #34352e;
+}
+
+:root[data-theme="dark"] .session-date strong,
+:root[data-theme="dark"] .session-date span {
+  color: #e3d4b4;
+}
+
+:root[data-theme="dark"] .campaign-card:hover {
+  border-color: #625b4d;
+  box-shadow: 0 10px 25px rgb(0 0 0 / 25%);
+}
+
+:root[data-theme="dark"] .campaign-card-meta,
+:root[data-theme="dark"] .player-row,
+:root[data-theme="dark"] .note-meta span,
+:root[data-theme="dark"] .detail-stat + .detail-stat,
+:root[data-theme="dark"] .detail-players .panel-heading {
+  border-color: #383932;
+}
+
+:root[data-theme="dark"] .mini-avatar,
+:root[data-theme="dark"] .player-avatar {
+  border-color: var(--surface);
+}
+
+:root[data-theme="dark"] .card-arrow,
+:root[data-theme="dark"] .subtle-button,
+:root[data-theme="dark"] .detail-more {
+  border-color: #484840;
+  color: #d2c5a9;
+}
+
+:root[data-theme="dark"] .campaign-card:hover .card-arrow {
+  border-color: #c8a66b;
+  background: #c8a66b;
+  color: #231f18;
+}
+
+:root[data-theme="dark"] .search-field:focus-within,
+:root[data-theme="dark"] .campaign-form input:focus,
+:root[data-theme="dark"] .campaign-form select:focus,
+:root[data-theme="dark"] .campaign-form textarea:focus {
+  border-color: #b99a60;
+  box-shadow: 0 0 0 3px rgb(185 154 96 / 20%);
+}
+
+:root[data-theme="dark"] .campaign-form input::placeholder,
+:root[data-theme="dark"] .campaign-form textarea::placeholder {
+  color: #878276;
+}
+
+:root[data-theme="dark"] .campaign-dialog {
+  border-color: #45463e;
+  background: #23241f;
+}
+
+:root[data-theme="dark"] .campaign-about > p,
+:root[data-theme="dark"] .detail-empty {
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .dialog-actions {
+  border-color: var(--line);
+}
+
+:root[data-theme="dark"] .no-players,
+:root[data-theme="dark"] .loading-state {
+  color: var(--text-secondary);
+}
+
+:root[data-theme="dark"] .loading-spinner {
+  border-color: #46473f;
+  border-top-color: #d5b879;
+}
+
+:root[data-theme="dark"] .form-error {
+  color: #f0a197;
+}
+
+:root[data-theme="dark"] ::selection {
+  color: #211e18;
+  background: #d4b577;
+}
+
+@media (max-width: 680px) {
+  :root[data-theme="dark"] .mobile-nav {
+    border-color: var(--line);
+  }
+}
