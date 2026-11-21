@@ -1,0 +1,9 @@
+CREATE TYPE "CampaignThemeColor" AS ENUM ('GOLD', 'BLUE', 'SAGE', 'ROSE', 'VIOLET');
+CREATE TYPE "CampaignIcon" AS ENUM ('SUN', 'WAVE', 'TOWER', 'MOON', 'STAR');
+
+ALTER TABLE "Campaign"
+ADD COLUMN "initialLevel" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN "themeColor" "CampaignThemeColor" NOT NULL DEFAULT 'GOLD',
+ADD COLUMN "icon" "CampaignIcon" NOT NULL DEFAULT 'SUN',
+ADD COLUMN "tags" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+ADD COLUMN "playerCanViewDescription" BOOLEAN NOT NULL DEFAULT true;

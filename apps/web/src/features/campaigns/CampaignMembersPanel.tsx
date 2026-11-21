@@ -1,11 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useState, type FormEvent } from "react";
 import {
   inviteCampaignMember,
   listCampaignInvitations,
   listCampaignMembers,
+  leaveCampaign,
   removeCampaignMember,
   revokeCampaignInvitation,
+  transferCampaignOwnership,
   updateCampaignMemberRole,
 } from "./campaignsApi";
 
@@ -19,6 +22,7 @@ export function CampaignMembersPanel({
   ownerId: string;
 }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [feedback, setFeedback] = useState("");
   const membersKey = ["campaign-members", campaignId] as const;
@@ -52,22 +56,53 @@ export function CampaignMembersPanel({
           : "La invitación no se envió por Internet. El mensaje está en apps/api/var/mail para entregarlo de forma privada.",
       );
       await queryClient.invalidateQueries({ queryKey: invitationsKey });
+      await queryClient.invalidateQueries({ queryKey: ["campaign-dashboard"] });
     },
   });
   const revokeMutation = useMutation({
     mutationFn: (invitationId: string) =>
       revokeCampaignInvitation(campaignId, invitationId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: invitationsKey }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: invitationsKey });
+      await queryClient.invalidateQueries({ queryKey: ["campaign-dashboard"] });
+    },
   });
   const removeMutation = useMutation({
     mutationFn: (userId: string) => removeCampaignMember(campaignId, userId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: membersKey }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: membersKey });
+      await queryClient.invalidateQueries({ queryKey: ["campaign-dashboard"] });
+    },
   });
   const roleMutation = useMutation({
     mutationFn: ({ userId, role }: { userId: string; role: "DM" | "PLAYER" }) =>
       updateCampaignMemberRole(campaignId, userId, role),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: membersKey }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: membersKey });
+      await queryClient.invalidateQueries({ queryKey: ["campaign-dashboard"] });
+    },
+  });
+  const transferMutation = useMutation({
+    mutationFn: (targetUserId: string) => transferCampaignOwnership(campaignId, targetUserId),
+    onSuccess: async (campaign) => {
+      queryClient.setQueryData(["campaign", campaignId], campaign);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: membersKey }),
+        queryClient.invalidateQueries({ queryKey: ["campaign-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
+      ]);
+    },
+  });
+  const leaveMutation = useMutation({
+    mutationFn: () => leaveCampaign(campaignId),
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: ["campaign", campaignId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["campaign-dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["campaigns"] }),
+      ]);
+      navigate("/campaigns");
+    },
   });
 
   function submitInvite(event: FormEvent<HTMLFormElement>) {
@@ -87,6 +122,21 @@ export function CampaignMembersPanel({
           {membersQuery.data?.length ?? 0} miembros
         </span>
       </div>
+      {currentUserId !== ownerId && (
+        <button
+          className="member-remove-button leave-campaign-button"
+          type="button"
+          disabled={leaveMutation.isPending}
+          onClick={() => {
+            if (window.confirm("¿Quieres abandonar esta campaña? Podrás volver a unirte mediante una nueva invitación.")) {
+              leaveMutation.mutate();
+            }
+          }}
+        >
+          {leaveMutation.isPending ? "Saliendo…" : "Abandonar campaña"}
+        </button>
+      )}
+      {leaveMutation.error && <p className="member-feedback" role="alert">{leaveMutation.error.message}</p>}
 
       {membersQuery.isPending ? (
         <p className="member-feedback">Cargando miembros…</p>
@@ -117,12 +167,12 @@ export function CampaignMembersPanel({
                   aria-label={`Rol de ${member.email}`}
                   value={member.role}
                   disabled={roleMutation.isPending}
-                  onChange={(event) =>
-                    roleMutation.mutate({
-                      userId: member.userId,
-                      role: event.target.value as "DM" | "PLAYER",
-                    })
-                  }
+                  onChange={(event) => {
+                    const nextRole = event.target.value as "DM" | "PLAYER";
+                    if (nextRole !== member.role && window.confirm(`¿Cambiar el rol de ${member.email}?`)) {
+                      roleMutation.mutate({ userId: member.userId, role: nextRole });
+                    }
+                  }}
                 >
                   <option value="PLAYER">Jugador</option>
                   <option value="DM">DM</option>
@@ -139,7 +189,11 @@ export function CampaignMembersPanel({
                     className="member-remove-button"
                     type="button"
                     disabled={removeMutation.isPending}
-                    onClick={() => removeMutation.mutate(member.userId)}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar a ${member.email} de esta campaña?`)) {
+                        removeMutation.mutate(member.userId);
+                      }
+                    }}
                     aria-label={`Eliminar a ${member.email} de la campaña`}
                   >
                     Quitar
@@ -156,6 +210,33 @@ export function CampaignMembersPanel({
 
       {isDm && (
         <>
+          {canManageRoles && membersQuery.data?.some((member) => member.role === "DM" && member.userId !== ownerId) && (
+            <form
+              className="member-invite-form transfer-owner-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const targetUserId = String(new FormData(event.currentTarget).get("targetUserId"));
+                const target = membersQuery.data?.find((member) => member.userId === targetUserId);
+                if (target && window.confirm(`Transferir la propiedad de la campaña a ${target.email}?`)) {
+                  transferMutation.mutate(target.userId);
+                }
+              }}
+            >
+              <label htmlFor={`transfer-owner-${campaignId}`}>Transferir propiedad</label>
+              <div>
+                <select id={`transfer-owner-${campaignId}`} name="targetUserId" required defaultValue="">
+                  <option value="" disabled>Selecciona un DM</option>
+                  {membersQuery.data.filter((member) => member.role === "DM" && member.userId !== ownerId).map((member) => (
+                    <option key={member.userId} value={member.userId}>{member.email}</option>
+                  ))}
+                </select>
+                <button className="button button-secondary" type="submit" disabled={transferMutation.isPending}>
+                  {transferMutation.isPending ? "Transfiriendo…" : "Transferir"}
+                </button>
+              </div>
+              {transferMutation.error && <p className="member-feedback" role="alert">{transferMutation.error.message}</p>}
+            </form>
+          )}
           <form className="member-invite-form" onSubmit={submitInvite}>
             <label htmlFor={`invite-email-${campaignId}`}>
               Invitar por correo

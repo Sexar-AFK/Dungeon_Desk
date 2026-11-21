@@ -560,6 +560,21 @@ p {
 .art-elturel {
   background: linear-gradient(145deg, #596b72 0%, #827d6d 48%, #aa805a 100%);
 }
+.art-gold {
+  background: linear-gradient(145deg, #66533a, #b39364 56%, #d2bd8e);
+}
+.art-blue {
+  background: linear-gradient(145deg, #304b5d, #628093 56%, #a8bdc2);
+}
+.art-sage {
+  background: linear-gradient(145deg, #47574b, #80927a 56%, #bbc3a3);
+}
+.art-rose {
+  background: linear-gradient(145deg, #684b4d, #a97870 56%, #d4b3a1);
+}
+.art-violet {
+  background: linear-gradient(145deg, #49435c, #756b91 56%, #b5a3bd);
+}
 .art-elturel:before {
   background:
     linear-gradient(0deg, #2023268a, transparent 80%),
@@ -684,6 +699,23 @@ p {
   color: #8b867d;
   font-size: 10px;
   line-height: 1.55;
+}
+.campaign-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: -5px 0 9px;
+}
+.campaign-card-tags span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 6px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .campaign-card-meta {
   display: flex;
@@ -932,6 +964,14 @@ p {
   padding-bottom: 13px;
   border-bottom: 1px solid var(--line);
 }
+.role-filter-tabs {
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
 .filter-tabs {
   display: flex;
   align-items: center;
@@ -994,6 +1034,24 @@ p {
 }
 .search-field input::placeholder {
   color: #aaa59b;
+}
+.sort-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.sort-field select {
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
 }
 .all-campaigns-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1182,8 +1240,23 @@ p {
   font-size: 12px;
   line-height: 1.65;
 }
+.campaign-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -5px 0 14px;
+}
+.campaign-tag-list span {
+  padding: 4px 8px;
+  border: 1px solid #ffffff40;
+  border-radius: 20px;
+  background: #ffffff14;
+  color: #fff;
+  font-size: 9px;
+}
 .detail-hero-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 9px;
 }
@@ -1303,7 +1376,8 @@ p {
   display: flex;
   gap: 8px;
 }
-.member-invite-form input {
+.member-invite-form input,
+.member-invite-form select {
   min-width: 0;
   flex: 1;
   padding: 9px 11px;
@@ -1313,6 +1387,10 @@ p {
   color: #514d46;
   font: inherit;
   font-size: 11px;
+}
+.leave-campaign-button {
+  width: max-content;
+  margin: -5px 0 10px auto;
 }
 .member-invite-form .button {
   flex-shrink: 0;
@@ -1339,6 +1417,47 @@ p {
   margin-top: 3px;
   color: #969087;
   font-size: 9px;
+}
+.incoming-invitations {
+  display: grid;
+  gap: 10px;
+}
+.incoming-invitations .panel-heading {
+  margin-bottom: 2px;
+}
+.incoming-invitation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+.incoming-invitation > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.incoming-invitation strong {
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 600;
+}
+.incoming-invitation span,
+.incoming-invitation small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.incoming-invitation-actions {
+  display: flex;
+  flex: none;
+  gap: 7px;
+}
+.incoming-invitation-actions .button {
+  min-height: 34px;
+  padding-inline: 10px;
+  font-size: 10px;
 }
 .player-list {
   display: grid;
@@ -1504,6 +1623,46 @@ p {
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
+}
+.campaign-form .campaign-settings-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.campaign-settings-row .form-label {
+  margin-top: 0;
+}
+.campaign-visibility-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+.campaign-visibility-toggle input {
+  width: 16px;
+  min-height: 16px;
+  flex: none;
+  margin: 2px 0 0;
+  accent-color: #987748;
+}
+.campaign-visibility-toggle span {
+  display: grid;
+  gap: 4px;
+}
+.campaign-visibility-toggle strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+.campaign-visibility-toggle small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
 }
 .campaign-form textarea {
   min-height: 86px;
@@ -1966,6 +2125,44 @@ p {
 .no-players {
   color: #99948a;
   font-size: 10px;
+}
+.dashboard-invitation-note {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+@media (max-width: 680px) {
+  .campaign-form .campaign-settings-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .incoming-invitation {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .incoming-invitation-actions .button {
+    flex: 1;
+  }
+  .campaign-members-panel .player-row {
+    flex-wrap: wrap;
+  }
+  .campaign-members-panel .player-copy {
+    flex: 1 1 calc(100% - 60px);
+  }
+  .campaign-members-panel .member-role-select {
+    margin-left: 43px;
+  }
+  .campaign-members-panel .member-remove-button {
+    margin-left: auto;
+  }
+  .transfer-owner-form > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 .form-error {
   margin: 5px 0 0;

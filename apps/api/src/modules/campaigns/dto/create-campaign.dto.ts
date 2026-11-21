@@ -1,8 +1,9 @@
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { CampaignSettingsDto } from './campaign-settings.dto.js';
 
 /** Fields accepted when a campaign is first created. */
-export class CreateCampaignDto {
+export class CreateCampaignDto extends CampaignSettingsDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(1)

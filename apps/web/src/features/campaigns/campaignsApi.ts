@@ -1,6 +1,11 @@
 import type {
   Campaign,
   CampaignRecord,
+  CampaignDashboardRecord,
+  DashboardCampaign,
+  IncomingCampaignInvitation,
+  CampaignIcon,
+  CampaignThemeColor,
   CampaignStatusCode,
   CreateCampaignInput,
   UpdateCampaignInput,
@@ -82,17 +87,23 @@ const statusLabels: Record<CampaignStatusCode, Campaign["status"]> = {
   ARCHIVED: "Archivada",
 };
 
-const campaignArt = [
-  { art: "art-elturel", symbol: "☼" },
-  { art: "art-tides", symbol: "≈" },
-  { art: "art-ash", symbol: "♜" },
-] as const;
+const campaignArt: Record<CampaignThemeColor, string> = {
+  GOLD: "art-gold",
+  BLUE: "art-blue",
+  SAGE: "art-sage",
+  ROSE: "art-rose",
+  VIOLET: "art-violet",
+};
+const campaignIcons: Record<CampaignIcon, string> = {
+  SUN: "☼",
+  WAVE: "≈",
+  TOWER: "♜",
+  MOON: "☾",
+  STAR: "✦",
+};
 
 /** Converts the API's persistence model into the fields the current UI needs. */
 export function toCampaignView(record: CampaignRecord): Campaign {
-  const artIndex = hashId(record.id) % campaignArt.length;
-  const visual = campaignArt[artIndex];
-
   return {
     id: record.id,
     ownerId: record.ownerId,
@@ -103,11 +114,17 @@ export function toCampaignView(record: CampaignRecord): Campaign {
     status: statusLabels[record.status],
     statusCode: record.status,
     edition: record.edition,
-    art: visual.art,
-    symbol: visual.symbol,
+    art: campaignArt[record.themeColor],
+    symbol: campaignIcons[record.icon],
     players: [],
     lastPlayed: formatLastUpdated(record.updatedAt),
     nextSession: "Por programar",
+    initialLevel: record.initialLevel,
+    themeColor: record.themeColor,
+    icon: record.icon,
+    tags: record.tags,
+    playerCanViewDescription: record.playerCanViewDescription,
+    updatedAt: record.updatedAt,
   };
 }
 
@@ -115,6 +132,17 @@ export function toCampaignView(record: CampaignRecord): Campaign {
 export async function listCampaigns(): Promise<Campaign[]> {
   const records = await request<CampaignRecord[]>("/campaigns");
   return records.map(toCampaignView);
+}
+
+/** Loads the role-aware campaign summaries used by the home dashboard. */
+export async function getCampaignDashboard(): Promise<DashboardCampaign[]> {
+  const records = await request<CampaignDashboardRecord[]>("/campaigns/dashboard");
+  return records.map((record) => ({
+    ...toCampaignView(record),
+    role: record.role,
+    playerCount: record.playerCount,
+    pendingInvitationCount: record.pendingInvitationCount,
+  }));
 }
 
 /** Creates a campaign and returns its UI-ready representation. */
@@ -155,6 +183,27 @@ export async function archiveCampaign(id: string): Promise<Campaign> {
     { method: "PATCH" },
   );
   return toCampaignView(record);
+}
+
+export function deleteCampaign(id: string, confirmation: string) {
+  return request<{ deleted: true }>(`/campaigns/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ confirmation }),
+  });
+}
+
+export async function transferCampaignOwnership(id: string, targetUserId: string) {
+  const record = await request<CampaignRecord>(
+    `/campaigns/${encodeURIComponent(id)}/owner`,
+    { method: "PATCH", body: JSON.stringify({ targetUserId }) },
+  );
+  return toCampaignView(record);
+}
+
+export function leaveCampaign(id: string) {
+  return request<{ left: true }>(`/campaigns/${encodeURIComponent(id)}/leave`, {
+    method: "POST",
+  });
 }
 
 export type CampaignMember = {
@@ -236,6 +285,20 @@ export function respondToCampaignInvitation(
   );
 }
 
+export function listIncomingCampaignInvitations() {
+  return request<IncomingCampaignInvitation[]>("/campaign-invitations/pending");
+}
+
+export function respondToIncomingCampaignInvitation(
+  invitationId: string,
+  decision: "accept" | "reject",
+) {
+  return request<{ accepted: true; campaignId: string } | { rejected: true }>(
+    `/campaign-invitations/${encodeURIComponent(invitationId)}/${decision}`,
+    { method: "POST" },
+  );
+}
+
 /** Lets the detail page distinguish a missing record from other failures. */
 export class ApiError extends Error {
   readonly status: number;
@@ -282,13 +345,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
-}
-
-function hashId(id: string): number {
-  return Array.from(id).reduce(
-    (hash, character) => hash + character.charCodeAt(0),
-    0,
-  );
 }
 
 function formatLastUpdated(value: string): string {

@@ -1,34 +1,72 @@
 # Dungeon Desk
 
-# Dungeon Desk — Informe de actualización de la ALPHA 0.3
+# Dungeon Desk — Informe de actualización de la ALPHA 0.4
 
-**Estado:** Funcionalidad implementada y validada localmente
-**Alcance:** membresías de campaña, roles DM/jugador e invitaciones por correo.
+**Estado:** Funcionalidad implementada y validada localmente; revisión visual manual pendiente  \
+**Fecha:** 2026-11-20  \
+**Alcance:** dashboards por rol, configuración y administración de campañas, invitaciones entrantes y permisos.
 
 ## Resumen
 
-La versión 0.3 permite que varios usuarios participen en una campaña. El propietario es DM inicial; puede invitar jugadores, administrar miembros y asignar roles. La API aplica los permisos por campaña y el frontend ofrece las acciones disponibles según el rol.
+La versión 0.4 ofrece espacios diferenciados para Dungeon Masters y jugadores, incluidos usuarios que tienen ambos roles en campañas distintas. También integra la configuración y administración de campañas que anteriormente se había planeado para la v0.5.
 
-## Cambios implementados
+La plataforma continúa siendo de desarrollo local/LAN. La implementación no implica que esté preparada para exponerse a Internet.
 
-- Membresías con roles `DM` y `PLAYER`; las campañas existentes conservan el acceso de sus propietarios como DM.
-- Invitaciones por correo con enlaces de un solo uso, expiración de siete días, aceptación, rechazo y revocación.
-- Listado y retirada de miembros, cambio de roles y autorización en backend para las operaciones de campaña.
-- Interfaz web para consultar miembros, invitar, revocar invitaciones, administrar roles y aceptar o rechazar invitaciones.
-- La respuesta de invitación indica si el mensaje fue aceptado por SMTP o guardado localmente como `.eml`.
+## Funcionalidad implementada
 
-## Verificaciones
+- Dashboard combinado por roles: campañas que dirige el usuario y campañas donde participa como jugador.
+- Resumen para DM con campañas activas, cantidad de jugadores e invitaciones pendientes.
+- Bandeja de invitaciones entrantes para cuentas con correo verificado; se conserva el flujo de aceptación por enlace de correo.
+- Navegación filtrada por rol y por estado, búsqueda por texto/etiquetas y ordenamiento por actualización, nombre o nivel inicial.
+- Ajustes de campaña: nombre, descripción, sistema/edición, nivel inicial, estado, etiquetas, color e icono.
+- Preferencia de visibilidad para la descripción: puede ocultarse a jugadores; el resto de los datos sigue limitado a miembros de la campaña.
+- Administración de miembros: invitaciones, revocación, roles, expulsión y posibilidad de reincorporarse mediante una nueva invitación.
+- Transferencia de propiedad a otro DM, salida de miembros y eliminación permanente protegida.
+- Las campañas solo se pueden eliminar si están archivadas y el propietario confirma el nombre exacto. El propietario debe transferir la campaña antes de abandonarla.
+- La API aplica las reglas de autorización; ocultar acciones en la interfaz no se considera un control de seguridad.
 
-- Migración aplicada y verificada en PostgreSQL local.
-- API: build y lint correctos; 14 pruebas unitarias y 3 pruebas e2e aprobadas.
-- Web: build de producción correcto.
-- Flujos de membresía e invitación comprobados localmente; se limpiaron los datos temporales.
+## API de campañas
 
-## Configuración de correo pendiente
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| `GET` | `/campaigns/dashboard` | Resumen de campañas del usuario con rol y contadores. |
+| `GET` | `/campaigns` | Listar campañas a las que pertenece el usuario. |
+| `POST` | `/campaigns` | Crear campaña y establecer al creador como DM. |
+| `PATCH` | `/campaigns/:id` | Actualizar detalles y preferencias (DM). |
+| `PATCH` | `/campaigns/:id/archive` | Archivar campaña (DM). |
+| `DELETE` | `/campaigns/:id` | Eliminar campaña archivada; requiere propietario y confirmación. |
+| `PATCH` | `/campaigns/:id/owner` | Transferir propiedad a otro DM. |
+| `POST` | `/campaigns/:id/leave` | Abandonar una campaña (no disponible para el propietario). |
+| `GET` | `/campaigns/:id/members` | Listar miembros de una campaña. |
+| `GET` | `/campaign-invitations/pending` | Listar invitaciones entrantes para el correo verificado. |
+| `POST` | `/campaign-invitations/:invitationId/accept` | Aceptar invitación desde la bandeja. |
+| `POST` | `/campaign-invitations/:invitationId/reject` | Rechazar invitación desde la bandeja. |
 
-En el entorno actual no hay `SMTP_URL` ni `MAIL_FROM` configurados. Por defecto, los mensajes se guardan en `apps/api/var/mail` y **no se envían por Internet**. Para habilitar la entrega real, configura credenciales SMTP y un remitente aceptado por el proveedor en `apps/api/.env`, y reinicia la API. Si los jugadores acceden desde la LAN, configura también `APP_PUBLIC_URL` con una dirección alcanzable por ellos. No guardes ni compartas las credenciales en el repositorio.
+Las invitaciones se validan en el backend contra el correo verificado de la sesión. La bandeja no expone tokens; la base de datos conserva hashes de los tokens de enlace.
 
----
+## Migración de datos
+
+Se añadió la migración `20261122100000_campaign_settings`, que agrega nivel inicial, icono, color, etiquetas y preferencia de visibilidad. Los valores por defecto preservan el comportamiento de campañas existentes. La migración se aplicó a la base local `dungeon_desk` y Prisma reporta el esquema actualizado.
+
+## Verificaciones realizadas
+
+- Prisma: esquema validado y migración aplicada en PostgreSQL local.
+- API: compilación y lint correctos; 27 pruebas unitarias aprobadas.
+- Web: compilación de producción y lint correctos.
+- `git diff --check`: sin errores de espacios o formato.
+- La revisión visual manual de los recorridos responsive en escritorio y móvil sigue pendiente.
+
+El entorno emite una advertencia porque usa Node.js 26, mientras que el proyecto declara Node.js `>=24 <25`.
+
+## Configuración local y límites
+
+- En desarrollo, los mensajes de verificación e invitación se guardan como `.eml` en `apps/api/var/mail`; no se envían por Internet sin configurar SMTP.
+- Para probar el registro de la segunda cuenta, `ALLOW_PUBLIC_SIGNUP` está habilitado en el `.env` local. Se recomienda deshabilitarlo cuando termine la prueba.
+- La configuración local de LAN usa el origen exacto de Vite en `CORS_ALLOWED_ORIGINS` y una URL alcanzable desde los dispositivos en `APP_PUBLIC_URL`.
+- Las sesiones de juego y los personajes siguen siendo hitos posteriores; la actividad reciente depende de módulos posteriores.
+- No se deben abrir puertos del router a Internet. Antes de un despliegue público hacen falta HTTPS, revisión de seguridad y configuración de correo/operación de producción.
+
+**Resultado:** las capacidades de la v0.4 están implementadas y validadas automáticamente. El cierre del hito queda sujeto a la revisión visual manual indicada arriba.
 
 # ReadMe Main
 

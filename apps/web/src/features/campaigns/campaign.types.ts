@@ -24,7 +24,16 @@ export type Campaign = {
   nextMonth?: string;
   nextTime?: string;
   statusCode: CampaignStatusCode;
+  initialLevel: number;
+  themeColor: CampaignThemeColor;
+  icon: CampaignIcon;
+  tags: string[];
+  playerCanViewDescription: boolean;
+  updatedAt: string;
 };
+
+export type CampaignThemeColor = "GOLD" | "BLUE" | "SAGE" | "ROSE" | "VIOLET";
+export type CampaignIcon = "SUN" | "WAVE" | "TOWER" | "MOON" | "STAR";
 
 /** Status values shared with the API and persisted by Prisma. */
 export type CampaignStatusCode = "ACTIVE" | "PAUSED" | "FINISHED" | "ARCHIVED";
@@ -34,6 +43,11 @@ export type CreateCampaignInput = {
   title: string;
   description?: string;
   edition?: string;
+  initialLevel?: number;
+  themeColor?: CampaignThemeColor;
+  icon?: CampaignIcon;
+  tags?: string[];
+  playerCanViewDescription?: boolean;
 };
 
 /** Fields accepted by PATCH /campaigns/:id. */
@@ -54,6 +68,32 @@ export type CampaignRecord = {
   description: string | null;
   edition: string;
   status: CampaignStatusCode;
+  initialLevel: number;
+  themeColor: CampaignThemeColor;
+  icon: CampaignIcon;
+  tags: string[];
+  playerCanViewDescription: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Campaign summary scoped to the current user for the role-aware home page. */
+export type CampaignDashboardRecord = CampaignRecord & {
+  role: "DM" | "PLAYER";
+  playerCount: number;
+  pendingInvitationCount: number;
+};
+
+export type IncomingCampaignInvitation = {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  campaign: { id: string; title: string };
+  invitedBy: { email: string };
+};
+
+export type DashboardCampaign = Campaign & {
+  role: "DM" | "PLAYER";
+  playerCount: number;
+  pendingInvitationCount: number;
 };

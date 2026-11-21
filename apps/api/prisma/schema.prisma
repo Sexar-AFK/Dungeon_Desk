@@ -21,12 +21,33 @@ enum CampaignRole {
   PLAYER
 }
 
+enum CampaignThemeColor {
+  GOLD
+  BLUE
+  SAGE
+  ROSE
+  VIOLET
+}
+
+enum CampaignIcon {
+  SUN
+  WAVE
+  TOWER
+  MOON
+  STAR
+}
+
 model Campaign {
   id          String               @id @default(cuid())
   title       String               @db.VarChar(80)
   description String?              @db.VarChar(500)
   edition     String               @default("D&D 5e · 2014") @db.VarChar(80)
   status      CampaignStatus       @default(ACTIVE)
+  initialLevel Int                 @default(1)
+  themeColor  CampaignThemeColor   @default(GOLD)
+  icon        CampaignIcon         @default(SUN)
+  tags        String[]             @default([])
+  playerCanViewDescription Boolean @default(true)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   ownerId     String

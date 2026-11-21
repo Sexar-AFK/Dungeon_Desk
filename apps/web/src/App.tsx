@@ -8,14 +8,18 @@ import {
   Routes,
   useNavigate,
   useLocation,
+  useSearchParams,
   useParams,
 } from "react-router-dom";
 import { ArchiveCampaignDialog } from "./features/campaigns/ArchiveCampaignDialog";
 import { CampaignMembersPanel } from "./features/campaigns/CampaignMembersPanel";
 import { CampaignDialog } from "./features/campaigns/CampaignDialog";
+import { DeleteCampaignDialog } from "./features/campaigns/DeleteCampaignDialog";
+import { IncomingCampaignInvitations } from "./features/campaigns/IncomingCampaignInvitations";
 import type {
   Campaign,
   CampaignSaveInput,
+  DashboardCampaign,
 } from "./features/campaigns/campaign.types";
 import {
   ApiError,
@@ -30,8 +34,10 @@ import {
   verifyEmail as verifyEmailRequest,
   type AuthenticatedUser,
   archiveCampaign as archiveCampaignRequest,
+  deleteCampaign as deleteCampaignRequest,
   createCampaign as createCampaignRequest,
   getCampaign,
+  getCampaignDashboard,
   listCampaigns,
   updateCampaign as updateCampaignRequest,
   listCampaignMembers,
@@ -52,6 +58,7 @@ const todayLabel = new Intl.DateTimeFormat("es-ES", {
   .toLocaleUpperCase("es-ES");
 
 const CAMPAIGNS_QUERY_KEY = ["campaigns"] as const;
+const DASHBOARD_QUERY_KEY = ["campaign-dashboard"] as const;
 
 type CampaignQueryState = {
   isLoading: boolean;
@@ -73,10 +80,23 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
     queryKey: CAMPAIGNS_QUERY_KEY,
     queryFn: listCampaigns,
   });
+  const dashboardQuery = useQuery({
+    queryKey: DASHBOARD_QUERY_KEY,
+    queryFn: getCampaignDashboard,
+  });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const navigate = useNavigate();
   const campaigns = campaignsQuery.data ?? [];
+  const hasDmCampaigns = dashboardQuery.data?.some((campaign) => campaign.role === "DM") ?? false;
+  const hasPlayerCampaigns = dashboardQuery.data?.some((campaign) => campaign.role === "PLAYER") ?? false;
+  const workspaceRole = hasDmCampaigns && hasPlayerCampaigns
+    ? "DM y jugador"
+    : hasDmCampaigns
+      ? "Dungeon Master"
+      : hasPlayerCampaigns
+        ? "Jugador"
+        : "Tu mesa";
   const queryState: CampaignQueryState = {
     isLoading: campaignsQuery.isLoading,
     error: campaignsQuery.error,
@@ -96,6 +116,18 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
     mutationFn: archiveCampaignRequest,
     onSuccess: updateCampaignInCache,
   });
+  const deleteCampaignMutation = useMutation({
+    mutationFn: ({ id, confirmation }: { id: string; confirmation: string }) =>
+      deleteCampaignRequest(id, confirmation),
+    onSuccess: async (_result, variables) => {
+      queryClient.removeQueries({ queryKey: ["campaign", variables.id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CAMPAIGNS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY }),
+      ]);
+      navigate("/campaigns");
+    },
+  });
 
   function addCampaignToCache(campaign: Campaign) {
     queryClient.setQueryData<Campaign[]>(CAMPAIGNS_QUERY_KEY, (current) => [
@@ -103,6 +135,7 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
       ...(current ?? []),
     ]);
     queryClient.setQueryData(["campaign", campaign.id], campaign);
+    void queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
   }
 
   function updateCampaignInCache(campaign: Campaign) {
@@ -110,6 +143,7 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
       current?.map((item) => (item.id === campaign.id ? campaign : item)),
     );
     queryClient.setQueryData(["campaign", campaign.id], campaign);
+    void queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
   }
 
   function openCreateCampaign() {
@@ -142,9 +176,19 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
     await archiveCampaignMutation.mutateAsync(id);
   }
 
+  async function handleDeleteCampaign(id: string, confirmation: string) {
+    await deleteCampaignMutation.mutateAsync({ id, confirmation });
+  }
+
   return (
     <div className="app-shell">
-      <Sidebar user={user} onSignOut={onSignOut} />
+      <Sidebar
+        user={user}
+        onSignOut={onSignOut}
+        workspaceRole={workspaceRole}
+        hasDmCampaigns={hasDmCampaigns}
+        hasPlayerCampaigns={hasPlayerCampaigns}
+      />
       <div className="main-column">
         <Topbar
           onNewCampaign={openCreateCampaign}
@@ -152,6 +196,7 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
           onToggleTheme={onToggleTheme}
           user={user}
           onSignOut={onSignOut}
+          workspaceRole={workspaceRole}
         />
         {/* Keep the first release focused on campaign discovery and details. */}
         <main className="page-content" id="main-content">
@@ -160,9 +205,11 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
               path="/"
               element={
                 <Dashboard
-                  campaigns={campaigns}
+                  campaigns={dashboardQuery.data ?? []}
                   onNewCampaign={openCreateCampaign}
-                  {...queryState}
+                  isLoading={dashboardQuery.isLoading}
+                  error={dashboardQuery.error}
+                  onRetry={() => void dashboardQuery.refetch()}
                 />
               }
             />
@@ -171,6 +218,10 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
               element={
                 <CampaignsPage
                   campaigns={campaigns}
+                  dashboardCampaigns={dashboardQuery.data ?? []}
+                  dashboardLoading={dashboardQuery.isLoading}
+                  dashboardError={dashboardQuery.error}
+                  onRetryDashboard={() => void dashboardQuery.refetch()}
                   onNewCampaign={openCreateCampaign}
                   {...queryState}
                 />
@@ -179,11 +230,12 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
             <Route
               path="/campaigns/:campaignId"
               element={
-                <CampaignDetail
-                  currentUserId={user.id}
-                  onEdit={openEditCampaign}
-                  onArchive={handleArchiveCampaign}
-                />
+              <CampaignDetail
+                currentUserId={user.id}
+                onEdit={openEditCampaign}
+                onArchive={handleArchiveCampaign}
+                onDelete={handleDeleteCampaign}
+              />
               }
             />
             <Route
@@ -211,7 +263,19 @@ function App({ theme, onToggleTheme, user, onSignOut }: AppProps) {
 }
 
 /** Desktop navigation; mobile uses the compact bottom bar below. */
-function Sidebar({ user, onSignOut }: { user: AuthenticatedUser; onSignOut: () => void }) {
+function Sidebar({
+  user,
+  onSignOut,
+  workspaceRole,
+  hasDmCampaigns,
+  hasPlayerCampaigns,
+}: {
+  user: AuthenticatedUser;
+  onSignOut: () => void;
+  workspaceRole: string;
+  hasDmCampaigns: boolean;
+  hasPlayerCampaigns: boolean;
+}) {
   return (
     <aside className="sidebar" aria-label="Navegación principal">
       <Link className="brand" to="/" aria-label="Dungeon Desk, inicio">
@@ -227,7 +291,7 @@ function Sidebar({ user, onSignOut }: { user: AuthenticatedUser; onSignOut: () =
         <div className="workspace-avatar">DD</div>
         <div className="workspace-copy">
           <strong>Tu espacio</strong>
-          <span>Mesa personal</span>
+          <span>{workspaceRole}</span>
         </div>
         <Icon name="chevrons" size={16} className="muted-icon" />
       </div>
@@ -235,7 +299,23 @@ function Sidebar({ user, onSignOut }: { user: AuthenticatedUser; onSignOut: () =
       <nav className="side-nav">
         <p className="nav-label">ESPACIO DE JUEGO</p>
         <NavItem to="/" icon="home" label="Inicio" end />
-        <NavItem to="/campaigns" icon="book" label="Campañas" />
+        <NavItem to="/campaigns" icon="book" label="Campañas" excludeSearchKey="role" />
+        {hasDmCampaigns && (
+          <NavItem
+            to="/campaigns?role=DM"
+            icon="scroll"
+            label="Como DM"
+            activeSearch={{ key: "role", value: "DM" }}
+          />
+        )}
+        {hasPlayerCampaigns && (
+          <NavItem
+            to="/campaigns?role=PLAYER"
+            icon="users"
+            label="Como jugador"
+            activeSearch={{ key: "role", value: "PLAYER" }}
+          />
+        )}
         <NavItem to="/characters" icon="users" label="Personajes" />
         <NavItem to="/notes" icon="scroll" label="Notas" />
       </nav>
@@ -268,15 +348,26 @@ function NavItem({
   icon,
   label,
   end = false,
+  activeSearch,
+  excludeSearchKey,
 }: {
   to: string;
   icon: "home" | "book" | "users" | "scroll";
   label: string;
   end?: boolean;
+  activeSearch?: { key: string; value: string };
+  excludeSearchKey?: string;
 }) {
+  const location = useLocation();
   return (
     <NavLink
-      className={({ isActive }) => `nav-item${isActive ? " is-active" : ""}`}
+      className={({ isActive }) => {
+        const search = new URLSearchParams(location.search);
+        const searchMatches = activeSearch
+          ? search.get(activeSearch.key) === activeSearch.value
+          : !excludeSearchKey || !search.has(excludeSearchKey);
+        return `nav-item${isActive && searchMatches ? " is-active" : ""}`;
+      }}
       to={to}
       end={end}
     >
@@ -292,19 +383,32 @@ function Topbar({
   onToggleTheme,
   user,
   onSignOut,
+  workspaceRole,
 }: {
   onNewCampaign: () => void;
   theme: Theme;
   onToggleTheme: () => void;
   user: AuthenticatedUser;
   onSignOut: () => void;
+  workspaceRole: string;
 }) {
+  const location = useLocation();
+  const context = location.pathname.startsWith("/campaigns/")
+    ? "Detalle de campaña"
+    : location.pathname === "/campaigns"
+      ? "Campañas"
+      : location.pathname === "/characters"
+        ? "Personajes"
+        : location.pathname === "/notes"
+          ? "Notas"
+          : workspaceRole;
+
   return (
     <header className="topbar">
       <div className="topbar-context">
         <span>Dungeon Desk</span>
         <Icon name="chevron" size={14} />
-        <strong>Tu espacio</strong>
+        <strong>{context}</strong>
       </div>
       <div className="topbar-actions">
         <Link
@@ -377,7 +481,7 @@ function MobileNavItem({
   );
 }
 
-/** Overview page backed by the current campaign query. */
+/** Home page with sections derived from the user's role in each campaign. */
 function Dashboard({
   campaigns,
   onNewCampaign,
@@ -385,14 +489,23 @@ function Dashboard({
   error,
   onRetry,
 }: {
-  campaigns: Campaign[];
+  campaigns: DashboardCampaign[];
   onNewCampaign: () => void;
   isLoading: boolean;
   error: Error | null;
   onRetry: () => void;
 }) {
-  const activeCampaigns = campaigns.filter(
-    (campaign) => campaign.status === "Activa",
+  const dmCampaigns = campaigns.filter((campaign) => campaign.role === "DM");
+  const playerCampaigns = campaigns.filter(
+    (campaign) => campaign.role === "PLAYER",
+  );
+  const activeDmCampaigns = dmCampaigns.filter((campaign) => campaign.statusCode === "ACTIVE");
+  const activePlayerCampaigns = playerCampaigns.filter((campaign) => campaign.statusCode === "ACTIVE");
+  const pendingInvitations = dmCampaigns
+    .filter((campaign) => campaign.statusCode !== "ARCHIVED")
+    .reduce(
+    (total, campaign) => total + campaign.pendingInvitationCount,
+    0,
   );
 
   return (
@@ -403,10 +516,10 @@ function Dashboard({
             <span className="eyebrow-dot" /> {todayLabel}
           </p>
           <h1>
-            Prepara tu próxima <span>aventura.</span>
+            Tu mesa, <span>desde aquí.</span>
           </h1>
           <p className="welcome-copy">
-            Tus mundos, historias y jugadores. Todo listo para continuar.
+            Campañas y accesos rápidos según tu papel en cada aventura.
           </p>
         </div>
         <button
@@ -418,113 +531,136 @@ function Dashboard({
         </button>
       </section>
 
-      <section className="summary-grid" aria-label="Resumen de tu espacio">
-        <SummaryCard
-          icon="book"
-          label="Campañas activas"
-          value={String(activeCampaigns.length).padStart(2, "0")}
-          foot="mundos en marcha"
-          tone="gold"
-        />
-        <SummaryCard
-          icon="users"
-          label="Aventureros"
-          value={String(
-            campaigns.reduce(
-              (total, campaign) => total + campaign.players.length,
-              0,
-            ),
-          ).padStart(2, "0")}
-          foot="La gestión llegará próximamente"
-          tone="blue"
-        />
-        <SummaryCard
-          icon="calendar"
-          label="Próxima sesión"
-          value="—"
-          foot="No hay sesiones programadas"
-          tone="sage"
-        />
-      </section>
+      <IncomingCampaignInvitations />
 
-      <section className="section-block">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">TUS MUNDOS</p>
-            <h2>Campañas</h2>
-          </div>
-          <Link className="text-link" to="/campaigns">
-            Ver todas <Icon name="arrow-right" size={16} />
-          </Link>
-        </div>
-        {isLoading ? (
-          <LoadingState label="Cargando tus campañas…" />
-        ) : error ? (
-          <RequestError error={error} onRetry={onRetry} />
-        ) : campaigns.length === 0 ? (
-          <EmptyCampaigns onCreate={onNewCampaign} />
-        ) : (
-          <div className="campaign-grid dashboard-campaign-grid">
-            {campaigns.slice(0, 3).map((campaign) => (
-              <CampaignCard campaign={campaign} key={campaign.id} />
-            ))}
-            <button
-              className="create-campaign-card"
-              type="button"
-              onClick={onNewCampaign}
-            >
-              <span className="create-card-icon">
-                <Icon name="plus" size={20} />
-              </span>
-              <strong>Un mundo por descubrir</strong>
-              <span>Crea una nueva campaña</span>
-            </button>
-          </div>
-        )}
-      </section>
+      {!isLoading && !error && campaigns.length > 0 && (
+        <section className="summary-grid" aria-label="Resumen de tus campañas">
+          {dmCampaigns.length > 0 && (
+            <>
+              <SummaryCard
+                icon="book"
+                label="Campañas activas como DM"
+                value={String(activeDmCampaigns.length).padStart(2, "0")}
+                foot="campañas que administras"
+                tone="gold"
+              />
+              <SummaryCard
+                icon="users"
+                label="Jugadores"
+                value={String(
+                  activeDmCampaigns.reduce((total, campaign) => total + campaign.playerCount, 0),
+                ).padStart(2, "0")}
+                foot="en tus campañas como DM"
+                tone="blue"
+              />
+              <SummaryCard
+                icon="calendar"
+                label="Invitaciones pendientes"
+                value={String(pendingInvitations).padStart(2, "0")}
+                foot="en tus campañas como DM"
+                tone="sage"
+              />
+            </>
+          )}
+          {activePlayerCampaigns.length > 0 && dmCampaigns.length === 0 && (
+            <SummaryCard
+              icon="book"
+              label="Campañas activas como jugador"
+              value={String(activePlayerCampaigns.length).padStart(2, "0")}
+              foot="aventuras en las que participas"
+              tone="blue"
+            />
+          )}
+        </section>
+      )}
 
-      <section className="bottom-grid">
-        <div className="panel next-session-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">EN EL CALENDARIO</p>
-              <h2>Tu próxima sesión</h2>
-            </div>
-            <span className="panel-icon">
-              <Icon name="calendar" size={18} />
-            </span>
-          </div>
-          <div className="session-feature">
-            <div className="session-date session-date-empty">
-              <Icon name="calendar" size={18} />
-            </div>
-            <div className="session-info">
-              <strong>Sin sesiones programadas</strong>
-              <span>La gestión de sesiones llegará próximamente.</span>
-            </div>
-          </div>
-          <p className="panel-footnote">
-            La planificación de sesiones llegará próximamente.
-          </p>
-        </div>
-        <div className="panel table-note-panel">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">UN APUNTE PARA TI</p>
-              <h2>Desde el escritorio</h2>
-            </div>
-            <span className="panel-icon note-icon">
-              <Icon name="sparkles" size={18} />
-            </span>
-          </div>
-          <p className="dm-note">
-            Las notas privadas del DM aparecerán aquí cuando conectemos ese
-            módulo.
-          </p>
-          <span className="note-meta">Notas privadas · Próximamente</span>
-        </div>
-      </section>
+      {isLoading ? (
+        <LoadingState label="Preparando tu espacio de juego…" />
+      ) : error ? (
+        <RequestError
+          error={error}
+          title="No pudimos preparar tu dashboard"
+          onRetry={onRetry}
+        />
+      ) : campaigns.length === 0 ? (
+        <EmptyCampaigns onCreate={onNewCampaign} />
+      ) : (
+        <>
+          {dmCampaigns.length > 0 && (
+            <DashboardCampaignSection
+              title="Campañas que diriges"
+              eyebrow="ESPACIO DEL DM"
+              campaigns={dmCampaigns}
+            />
+          )}
+          {playerCampaigns.length > 0 && (
+            <DashboardCampaignSection
+              title="Campañas en las que juegas"
+              eyebrow="ESPACIO DEL JUGADOR"
+              campaigns={playerCampaigns}
+            />
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+function DashboardCampaignSection({
+  title,
+  eyebrow,
+  campaigns,
+}: {
+  title: string;
+  eyebrow: string;
+  campaigns: DashboardCampaign[];
+}) {
+  const visibleCampaigns = campaigns
+    .filter((campaign) => campaign.statusCode !== "ARCHIVED")
+    .slice(0, 3);
+
+  return (
+    <section className="section-block">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">{eyebrow}</p>
+          <h2>{title}</h2>
+        </div>
+        <Link className="text-link" to="/campaigns">
+          Ver todas <Icon name="arrow-right" size={16} />
+        </Link>
+      </div>
+      {visibleCampaigns.length === 0 ? (
+        <div className="empty-state campaign-empty-state">
+          <span className="empty-state-icon"><Icon name="book" size={24} /></span>
+          <h2>No hay campañas activas aquí</h2>
+          <p>Tus campañas archivadas siguen disponibles en el listado completo.</p>
+          <Link className="button button-secondary" to="/campaigns">Ver campañas</Link>
+        </div>
+      ) : (
+        <div className="campaign-grid dashboard-campaign-grid">
+          {visibleCampaigns.map((campaign) => (
+            <CampaignCard
+              campaign={campaign}
+              playerCount={campaign.playerCount}
+              key={campaign.id}
+            />
+          ))}
+          {campaigns.some((campaign) => campaign.statusCode === "ARCHIVED") && (
+            <Link className="create-campaign-card" to="/campaigns">
+              <span className="create-card-icon"><Icon name="arrow-right" size={20} /></span>
+              <strong>Ver todas las campañas</strong>
+              <span>Incluye campañas archivadas</span>
+            </Link>
+          )}
+        </div>
+      )}
+      {campaigns.some((campaign) => campaign.pendingInvitationCount > 0) && (
+        <p className="dashboard-invitation-note" role="status">
+          {campaigns.reduce((total, campaign) => total + campaign.pendingInvitationCount, 0)} invitaciones pendientes. Abre una campaña para gestionar sus miembros.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -561,12 +697,20 @@ function SummaryCard({
 /** Searchable and filterable view of campaigns loaded from the API. */
 function CampaignsPage({
   campaigns,
+  dashboardCampaigns,
+  dashboardLoading,
+  dashboardError,
+  onRetryDashboard,
   onNewCampaign,
   isLoading,
   error,
   onRetry,
 }: {
   campaigns: Campaign[];
+  dashboardCampaigns: DashboardCampaign[];
+  dashboardLoading: boolean;
+  dashboardError: Error | null;
+  onRetryDashboard: () => void;
   onNewCampaign: () => void;
   isLoading: boolean;
   error: Error | null;
@@ -574,6 +718,15 @@ function CampaignsPage({
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Todas");
+  const [sortOrder, setSortOrder] = useState<"updated" | "name" | "level">("updated");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedRole = searchParams.get("role");
+  const roleFilter = requestedRole === "DM" || requestedRole === "PLAYER"
+    ? requestedRole
+    : null;
+  const dashboardById = new Map(
+    dashboardCampaigns.map((campaign) => [campaign.id, campaign]),
+  );
   const filters = ["Todas", "Activas", "En pausa", "Finalizadas", "Archivadas"];
   const statusByFilter: Record<string, Campaign["status"]> = {
     Activas: "Activa",
@@ -581,21 +734,36 @@ function CampaignsPage({
     Finalizadas: "Finalizada",
     Archivadas: "Archivada",
   };
-  const visibleCampaigns = campaigns.filter((campaign) => {
-    const matchesQuery = `${campaign.title} ${campaign.description}`
+  const sourceCampaigns = roleFilter
+    ? dashboardCampaigns.filter((campaign) => campaign.role === roleFilter)
+    : campaigns;
+  const visibleCampaigns = sourceCampaigns.filter((campaign) => {
+    const matchesQuery = `${campaign.title} ${campaign.description} ${"tags" in campaign ? campaign.tags.join(" ") : ""}`
       .toLocaleLowerCase("es")
       .includes(query.toLocaleLowerCase("es"));
     const matchesFilter =
       filter === "Todas" || campaign.status === statusByFilter[filter];
     return matchesQuery && matchesFilter;
+  }).sort((first, second) => {
+    if (sortOrder === "name") return first.title.localeCompare(second.title, "es");
+    if (sortOrder === "level") return second.initialLevel - first.initialLevel;
+    return Date.parse(second.updatedAt) - Date.parse(first.updatedAt);
   });
+  const requestError = error ?? (roleFilter ? dashboardError : null);
+  const retryRequest = error ? onRetry : onRetryDashboard;
 
   return (
     <div className="page-stack campaigns-page">
       <section className="page-title-row">
         <div>
           <p className="eyebrow">TU BIBLIOTECA DE AVENTURAS</p>
-          <h1>Tus campañas</h1>
+          <h1>
+            {roleFilter === "DM"
+              ? "Campañas que diriges"
+              : roleFilter === "PLAYER"
+                ? "Campañas en las que juegas"
+                : "Tus campañas"}
+          </h1>
           <p className="welcome-copy">
             Cada gran historia empieza alrededor de una mesa.
           </p>
@@ -608,6 +776,36 @@ function CampaignsPage({
           <Icon name="plus" size={17} /> Nueva campaña
         </button>
       </section>
+      <div className="filter-tabs role-filter-tabs" role="group" aria-label="Filtrar por rol">
+        <button
+          type="button"
+          className={`filter-tab${roleFilter === null ? " selected" : ""}`}
+          aria-pressed={roleFilter === null}
+          onClick={() => setSearchParams({})}
+        >
+          Todos los roles
+        </button>
+        {dashboardCampaigns.some((campaign) => campaign.role === "DM") && (
+          <button
+            type="button"
+            className={`filter-tab${roleFilter === "DM" ? " selected" : ""}`}
+            aria-pressed={roleFilter === "DM"}
+            onClick={() => setSearchParams({ role: "DM" })}
+          >
+            Como DM
+          </button>
+        )}
+        {dashboardCampaigns.some((campaign) => campaign.role === "PLAYER") && (
+          <button
+            type="button"
+            className={`filter-tab${roleFilter === "PLAYER" ? " selected" : ""}`}
+            aria-pressed={roleFilter === "PLAYER"}
+            onClick={() => setSearchParams({ role: "PLAYER" })}
+          >
+            Como jugador
+          </button>
+        )}
+      </div>
       <div className="campaign-tools">
         <div className="filter-tabs" role="group" aria-label="Filtrar campañas">
           {filters.map((item) => (
@@ -618,7 +816,7 @@ function CampaignsPage({
               onClick={() => setFilter(item)}
             >
               {item}
-              {item === "Todas" && <span>{campaigns.length}</span>}
+              {item === "Todas" && <span>{sourceCampaigns.length}</span>}
             </button>
           ))}
         </div>
@@ -631,19 +829,40 @@ function CampaignsPage({
             placeholder="Buscar campañas…"
           />
         </label>
+        <label className="sort-field">
+          <span>Ordenar</span>
+          <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}>
+            <option value="updated">Más recientes</option>
+            <option value="name">Nombre A–Z</option>
+            <option value="level">Nivel inicial</option>
+          </select>
+        </label>
       </div>
-      {isLoading ? (
+      {isLoading || (roleFilter !== null && dashboardLoading) ? (
         <LoadingState label="Cargando campañas…" />
-      ) : error ? (
-        <RequestError error={error} onRetry={onRetry} />
+      ) : requestError ? (
+        <RequestError error={requestError} onRetry={retryRequest} />
       ) : visibleCampaigns.length > 0 ? (
         <div className="campaign-grid all-campaigns-grid">
           {visibleCampaigns.map((campaign) => (
-            <CampaignCard campaign={campaign} key={campaign.id} />
+            <CampaignCard
+              campaign={campaign}
+              playerCount={dashboardById.get(campaign.id)?.playerCount ?? campaign.players.length}
+              key={campaign.id}
+            />
           ))}
         </div>
-      ) : campaigns.length === 0 ? (
+      ) : campaigns.length === 0 && !roleFilter ? (
         <EmptyCampaigns onCreate={onNewCampaign} />
+      ) : sourceCampaigns.length === 0 && roleFilter ? (
+        <div className="empty-state campaign-empty-state">
+          <span className="empty-state-icon"><Icon name="book" size={24} /></span>
+          <h2>No hay campañas con este rol</h2>
+          <p>Elige otro rol o vuelve a ver todas tus campañas.</p>
+          <button className="button button-secondary" type="button" onClick={() => setSearchParams({})}>
+            Ver todos los roles
+          </button>
+        </div>
       ) : (
         <div className="empty-state">
           <span className="empty-state-icon">
@@ -667,7 +886,13 @@ function CampaignsPage({
   );
 }
 
-function CampaignCard({ campaign }: { campaign: Campaign }) {
+function CampaignCard({
+  campaign,
+  playerCount = campaign.players.length,
+}: {
+  campaign: Campaign;
+  playerCount?: number;
+}) {
   return (
     <Link to={`/campaigns/${campaign.id}`} className="campaign-card">
       <div className={`campaign-art ${campaign.art}`}>
@@ -687,10 +912,15 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
       <div className="campaign-card-body">
         <h3>{campaign.title}</h3>
         <p className="campaign-description">{campaign.description}</p>
+        {campaign.tags.length > 0 && (
+          <div className="campaign-card-tags" aria-label="Etiquetas">
+            {campaign.tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}
+          </div>
+        )}
         <div className="campaign-card-meta">
           <span>
             <Icon name="users" size={15} />
-            {campaign.players.length} jugadores
+            {playerCount} {playerCount === 1 ? "jugador" : "jugadores"}
           </span>
           <span>{campaign.lastPlayed}</span>
         </div>
@@ -709,6 +939,8 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
                 </span>
               ))}
             </div>
+          ) : playerCount > 0 ? (
+            <span className="no-players">{playerCount} en la mesa</span>
           ) : (
             <span className="no-players">Sin jugadores</span>
           )}
@@ -726,13 +958,16 @@ function CampaignDetail({
   currentUserId,
   onEdit,
   onArchive,
+  onDelete,
 }: {
   currentUserId: string;
   onEdit: (campaign: Campaign) => void;
   onArchive: (id: string) => Promise<void>;
+  onDelete: (id: string, confirmation: string) => Promise<void>;
 }) {
   const { campaignId } = useParams();
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const campaignQuery = useQuery({
     queryKey: ["campaign", campaignId],
     queryFn: () => getCampaign(campaignId!),
@@ -768,6 +1003,7 @@ function CampaignDetail({
   if (!campaign) return <CampaignNotFound />;
   const currentMembership = membersQuery.data?.find((member) => member.userId === currentUserId);
   const canManageCampaign = currentMembership?.role === "DM";
+  const canDeleteCampaign = campaign.ownerId === currentUserId && campaign.statusCode === "ARCHIVED";
   const playerCount = membersQuery.data?.filter((member) => member.role === "PLAYER").length ?? 0;
 
   return (
@@ -790,10 +1026,15 @@ function CampaignDetail({
               {campaign.status}
             </span>
             <p>
-              {campaign.edition} <span>·</span> Campaña de D&D
+              {campaign.edition} <span>·</span> Nivel inicial {campaign.initialLevel}
             </p>
             <h1>{campaign.title}</h1>
             <p className="detail-description">{campaign.description}</p>
+            {campaign.tags.length > 0 && (
+              <div className="campaign-tag-list" aria-label="Etiquetas de campaña">
+                {campaign.tags.map((tag) => <span key={tag}>{tag}</span>)}
+              </div>
+            )}
             <div className="detail-hero-actions">
               {canManageCampaign && <button
                 className="button button-light"
@@ -810,6 +1051,15 @@ function CampaignDetail({
               >
                 {campaign.statusCode === "ARCHIVED" ? "Archivada" : "Archivar"}
               </button>}
+              {canDeleteCampaign && (
+                <button
+                  className="button button-danger"
+                  type="button"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  Eliminar definitivamente
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -863,13 +1113,15 @@ function CampaignDetail({
               <p className="eyebrow">EL MUNDO</p>
               <h2>Sobre esta campaña</h2>
             </div>
-            <button
-              className="button button-quiet"
-              type="button"
-              onClick={() => onEdit(campaign)}
-            >
-              Editar detalles
-            </button>
+            {canManageCampaign && (
+              <button
+                className="button button-quiet"
+                type="button"
+                onClick={() => onEdit(campaign)}
+              >
+                Editar detalles
+              </button>
+            )}
           </div>
           <p>{campaign.longDescription}</p>
         </section>
@@ -879,6 +1131,13 @@ function CampaignDetail({
           campaignTitle={campaign.title}
           onClose={() => setArchiveDialogOpen(false)}
           onArchive={() => onArchive(campaign.id)}
+        />
+      )}
+      {deleteDialogOpen && (
+        <DeleteCampaignDialog
+          campaignTitle={campaign.title}
+          onClose={() => setDeleteDialogOpen(false)}
+          onDelete={() => onDelete(campaign.id, campaign.title)}
         />
       )}
     </>
@@ -950,7 +1209,7 @@ function EmptyCampaigns({ onCreate }: { onCreate: () => void }) {
         <Icon name="book" size={24} />
       </span>
       <h2>Tu primera aventura empieza aquí</h2>
-      <p>Crea una campaña y dale forma al mundo que jugará tu mesa.</p>
+      <p>Crea una campaña para dirigir o acepta una invitación por correo para unirte a una mesa.</p>
       <button
         className="button button-primary"
         type="button"
@@ -1021,7 +1280,20 @@ function AuthGate({ theme, onToggleTheme }: Pick<AppProps, "theme" | "onToggleTh
   });
   const signOutMutation = useMutation({
     mutationFn: signOut,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["auth", "me"] }),
+    onSuccess: async () => {
+      queryClient.removeQueries({
+        predicate: (query) =>
+          [
+            "campaigns",
+            "campaign-dashboard",
+            "campaign",
+            "campaign-members",
+            "campaign-invitations",
+            "incoming-campaign-invitations",
+          ].includes(String(query.queryKey[0])),
+      });
+      await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
   });
 
   if (authAction) {
@@ -1204,6 +1476,8 @@ function InvitationActionScreen({ token }: { token: string }) {
     mutationFn: (decision: "accept" | "reject") => respondToCampaignInvitation(token, decision),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["campaigns"] });
+      await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: ["incoming-campaign-invitations"] });
       if ("campaignId" in result) {
         await queryClient.invalidateQueries({ queryKey: ["campaign-members", result.campaignId] });
         navigate(`/campaigns/${result.campaignId}`);

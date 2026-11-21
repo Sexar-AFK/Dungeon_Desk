@@ -7,9 +7,10 @@ import {
   MinLength,
 } from 'class-validator';
 import { CampaignStatus } from '../../../generated/prisma/enums.js';
+import { CampaignSettingsDto } from './campaign-settings.dto.js';
 
 /** Only editable campaign fields are accepted; IDs and timestamps are server-owned. */
-export class UpdateCampaignDto {
+export class UpdateCampaignDto extends CampaignSettingsDto {
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

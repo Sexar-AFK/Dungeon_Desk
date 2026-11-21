@@ -9,6 +9,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import {
   CampaignRole,
   CampaignStatus,
+  CampaignIcon,
+  CampaignThemeColor,
   Prisma,
 } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../database/prisma.service.js';
@@ -36,13 +38,18 @@ export class CampaignsService {
         title: input.title,
         description: input.description || null,
         edition: input.edition || 'D&D 5e · 2014',
+        initialLevel: input.initialLevel ?? 1,
+        themeColor: input.themeColor ?? CampaignThemeColor.GOLD,
+        icon: input.icon ?? CampaignIcon.SUN,
+        tags: input.tags ?? [],
+        playerCanViewDescription: input.playerCanViewDescription ?? true,
         owner: { connect: { id: ownerId } },
         memberships: { create: { userId: ownerId, role: CampaignRole.DM } },
       },
     });
   }
 
-  findAll(query: ListCampaignsQueryDto, ownerId: string) {
+  async findAll(query: ListCampaignsQueryDto, ownerId: string) {
     const where: Prisma.CampaignWhereInput = {
       memberships: { some: { userId: ownerId } },
     };
@@ -55,23 +62,94 @@ export class CampaignsService {
       ];
     }
 
-    return this.prisma.campaign.findMany({
+    const campaigns = await this.prisma.campaign.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
+      include: { memberships: { where: { userId: ownerId }, select: { role: true } } },
+    });
+    return campaigns.map(({ memberships, ...campaign }) =>
+      memberships[0]?.role === CampaignRole.PLAYER &&
+      !campaign.playerCanViewDescription
+        ? { ...campaign, description: null }
+        : campaign,
+    );
+  }
+
+  async findDashboard(userId: string) {
+    const now = new Date();
+    const campaigns = await this.prisma.campaign.findMany({
+      where: { memberships: { some: { userId } } },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        ownerId: true,
+        title: true,
+        description: true,
+        edition: true,
+        status: true,
+        initialLevel: true,
+        themeColor: true,
+        icon: true,
+        tags: true,
+        playerCanViewDescription: true,
+        createdAt: true,
+        updatedAt: true,
+        memberships: {
+          where: { userId },
+          select: { role: true },
+        },
+        _count: {
+          select: {
+            memberships: { where: { role: CampaignRole.PLAYER } },
+            invitations: {
+              where: {
+                acceptedAt: null,
+                revokedAt: null,
+                expiresAt: { gt: now },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return campaigns.map(({ memberships, _count, ...campaign }) => {
+      const role = memberships[0]?.role;
+      return {
+        ...campaign,
+        description:
+          role === CampaignRole.PLAYER && !campaign.playerCanViewDescription
+            ? null
+            : campaign.description,
+        role,
+        playerCount: _count.memberships,
+        pendingInvitationCount:
+          role === CampaignRole.DM && campaign.status !== CampaignStatus.ARCHIVED
+            ? _count.invitations
+            : 0,
+      };
     });
   }
 
   async findOne(id: string, userId: string) {
     const campaign = await this.prisma.campaign.findFirst({
       where: { id, memberships: { some: { userId } } },
+      include: { memberships: { where: { userId }, select: { role: true } } },
     });
     if (!campaign) throw new NotFoundException('Campaign not found.');
-    return campaign;
+    const { memberships, ...result } = campaign;
+    return memberships[0]?.role === CampaignRole.PLAYER &&
+      !campaign.playerCanViewDescription
+      ? { ...result, description: null }
+      : result;
   }
 
   async update(id: string, input: UpdateCampaignDto, ownerId: string) {
     if (Object.keys(input).length === 0) {
       throw new BadRequestException('At least one field must be provided.');
+    }
+    if (input.status === CampaignStatus.ARCHIVED) {
+      throw new BadRequestException('Use the archive action to archive a campaign.');
     }
 
     await this.requireRole(id, ownerId, CampaignRole.DM);
@@ -82,6 +160,13 @@ export class CampaignsService {
     }
     if (input.edition !== undefined) data.edition = input.edition;
     if (input.status !== undefined) data.status = input.status;
+    if (input.initialLevel !== undefined) data.initialLevel = input.initialLevel;
+    if (input.themeColor !== undefined) data.themeColor = input.themeColor;
+    if (input.icon !== undefined) data.icon = input.icon;
+    if (input.tags !== undefined) data.tags = input.tags;
+    if (input.playerCanViewDescription !== undefined) {
+      data.playerCanViewDescription = input.playerCanViewDescription;
+    }
 
     return this.prisma.campaign.update({
       where: { id },
@@ -95,6 +180,85 @@ export class CampaignsService {
       where: { id },
       data: { status: CampaignStatus.ARCHIVED },
     });
+  }
+
+  async transferOwnership(campaignId: string, targetUserId: string, actorId: string) {
+    return this.prisma.$transaction(
+      async (transaction) => {
+        const campaign = await transaction.campaign.findUnique({
+          where: { id: campaignId },
+          select: { ownerId: true },
+        });
+        if (!campaign) throw new NotFoundException('Campaign not found.');
+        if (campaign.ownerId !== actorId) {
+          throw new ForbiddenException('Only the campaign owner can transfer ownership.');
+        }
+        if (targetUserId === actorId) {
+          throw new BadRequestException('The selected member already owns this campaign.');
+        }
+        const target = await transaction.campaignMembership.findUnique({
+          where: { campaignId_userId: { campaignId, userId: targetUserId } },
+          select: { role: true },
+        });
+        if (!target || target.role !== CampaignRole.DM) {
+          throw new BadRequestException('Ownership can only be transferred to another campaign DM.');
+        }
+        const updated = await transaction.campaign.updateMany({
+          where: { id: campaignId, ownerId: actorId },
+          data: { ownerId: targetUserId },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException('Campaign ownership changed; reload and try again.');
+        }
+        return transaction.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async leaveCampaign(campaignId: string, userId: string) {
+    return this.prisma.$transaction(
+      async (transaction) => {
+        const membership = await transaction.campaignMembership.findUnique({
+          where: { campaignId_userId: { campaignId, userId } },
+          select: { campaign: { select: { ownerId: true } } },
+        });
+        if (!membership) throw new NotFoundException('Campaign not found.');
+        if (membership.campaign.ownerId === userId) {
+          throw new BadRequestException('The owner must transfer ownership before leaving.');
+        }
+        await transaction.campaignMembership.delete({
+          where: { campaignId_userId: { campaignId, userId } },
+        });
+        return { left: true };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async deleteCampaign(campaignId: string, confirmation: string, actorId: string) {
+    const campaign = await this.requireRole(campaignId, actorId, CampaignRole.DM);
+    if (campaign.ownerId !== actorId) {
+      throw new ForbiddenException('Only the campaign owner can delete this campaign.');
+    }
+    if (campaign.status !== CampaignStatus.ARCHIVED) {
+      throw new ConflictException('Archive the campaign before deleting it permanently.');
+    }
+    if (confirmation.trim() !== campaign.title) {
+      throw new BadRequestException('The campaign name confirmation does not match.');
+    }
+    const deleted = await this.prisma.campaign.deleteMany({
+      where: {
+        id: campaignId,
+        ownerId: actorId,
+        status: CampaignStatus.ARCHIVED,
+        title: campaign.title,
+      },
+    });
+    if (deleted.count !== 1) {
+      throw new ConflictException('Campaign changed; reload before deleting it.');
+    }
+    return { deleted: true };
   }
 
   async listMembers(campaignId: string, userId: string) {
@@ -213,6 +377,34 @@ export class CampaignsService {
     });
   }
 
+  async listPendingInvitations(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, emailVerified: true },
+    });
+    if (!user?.emailVerified) {
+      throw new ForbiddenException('Verify your email to view campaign invitations.');
+    }
+
+    return this.prisma.campaignInvitation.findMany({
+      where: {
+        email: normalizeEmail(user.email),
+        acceptedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        campaign: { status: { not: CampaignStatus.ARCHIVED } },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        createdAt: true,
+        expiresAt: true,
+        campaign: { select: { id: true, title: true } },
+        invitedBy: { select: { email: true } },
+      },
+    });
+  }
+
   async revokeInvitation(
     campaignId: string,
     invitationId: string,
@@ -234,10 +426,29 @@ export class CampaignsService {
   }
 
   async respondToInvitation(token: string, userId: string, accept: boolean) {
-    const tokenHash = hashToken(token);
+    return this.respondToInvitationWhere(
+      { tokenHash: hashToken(token) },
+      userId,
+      accept,
+    );
+  }
+
+  async respondToInvitationById(
+    invitationId: string,
+    userId: string,
+    accept: boolean,
+  ) {
+    return this.respondToInvitationWhere({ id: invitationId }, userId, accept);
+  }
+
+  private async respondToInvitationWhere(
+    where: Prisma.CampaignInvitationWhereUniqueInput,
+    userId: string,
+    accept: boolean,
+  ) {
     return this.prisma.$transaction(async (transaction) => {
       const invitation = await transaction.campaignInvitation.findUnique({
-        where: { tokenHash },
+        where,
         include: { campaign: { select: { status: true } } },
       });
       if (

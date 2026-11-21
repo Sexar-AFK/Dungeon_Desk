@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Icon } from "../../lib/Icon";
-import type { Campaign, CampaignSaveInput } from "./campaign.types";
+import type {
+  Campaign,
+  CampaignIcon,
+  CampaignSaveInput,
+  CampaignThemeColor,
+} from "./campaign.types";
 
 /** Native modal dialog; the browser handles focus trapping and Escape. */
 export function CampaignDialog({
@@ -18,6 +23,13 @@ export function CampaignDialog({
   const [description, setDescription] = useState(campaign?.description ?? "");
   const [edition, setEdition] = useState(campaign?.edition ?? "D&D 5e · 2014");
   const [status, setStatus] = useState(campaign?.statusCode ?? "ACTIVE");
+  const [initialLevel, setInitialLevel] = useState(campaign?.initialLevel ?? 1);
+  const [themeColor, setThemeColor] = useState<CampaignThemeColor>(campaign?.themeColor ?? "GOLD");
+  const [icon, setIcon] = useState<CampaignIcon>(campaign?.icon ?? "SUN");
+  const [tags, setTags] = useState(campaign?.tags.join(", ") ?? "");
+  const [playerCanViewDescription, setPlayerCanViewDescription] = useState(
+    campaign?.playerCanViewDescription ?? true,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -44,8 +56,13 @@ export function CampaignDialog({
       await onSave({
         title: cleanTitle,
         description: description.trim() || (campaign ? "" : undefined),
-        edition,
-        ...(campaign ? { status } : {}),
+          edition,
+          initialLevel,
+          themeColor,
+          icon,
+          tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+          playerCanViewDescription,
+          ...(campaign ? { status } : {}),
       });
     } catch (error) {
       setSubmitError(
@@ -102,7 +119,7 @@ export function CampaignDialog({
         <input
           ref={titleInputRef}
           id="campaign-title"
-          maxLength={60}
+          maxLength={80}
           disabled={isSubmitting}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
@@ -122,6 +139,58 @@ export function CampaignDialog({
           <option>D&amp;D 5e · 2024</option>
           <option>Otro sistema</option>
         </select>
+        <label className="form-label" htmlFor="campaign-initial-level">
+          Nivel inicial
+        </label>
+        <input
+          id="campaign-initial-level"
+          type="number"
+          min={1}
+          max={20}
+          value={initialLevel}
+          disabled={isSubmitting}
+          onChange={(event) => setInitialLevel(Number(event.target.value))}
+          required
+        />
+        <div className="campaign-settings-row">
+          <label className="form-label" htmlFor="campaign-theme-color">Color</label>
+          <select
+            id="campaign-theme-color"
+            value={themeColor}
+            disabled={isSubmitting}
+            onChange={(event) => setThemeColor(event.target.value as CampaignThemeColor)}
+          >
+            <option value="GOLD">Dorado</option>
+            <option value="BLUE">Azul</option>
+            <option value="SAGE">Salvia</option>
+            <option value="ROSE">Rosa</option>
+            <option value="VIOLET">Violeta</option>
+          </select>
+          <label className="form-label" htmlFor="campaign-icon">Icono</label>
+          <select
+            id="campaign-icon"
+            value={icon}
+            disabled={isSubmitting}
+            onChange={(event) => setIcon(event.target.value as CampaignIcon)}
+          >
+            <option value="SUN">☼ Sol</option>
+            <option value="WAVE">≈ Ola</option>
+            <option value="TOWER">♜ Torre</option>
+            <option value="MOON">☾ Luna</option>
+            <option value="STAR">✦ Estrella</option>
+          </select>
+        </div>
+        <label className="form-label" htmlFor="campaign-tags">
+          Etiquetas <span>Separadas por comas · hasta 8</span>
+        </label>
+        <input
+          id="campaign-tags"
+          maxLength={240}
+          value={tags}
+          disabled={isSubmitting}
+          onChange={(event) => setTags(event.target.value)}
+          placeholder="Fantasía, intriga, semanal"
+        />
         {campaign && (
           <>
             <label className="form-label" htmlFor="campaign-status">
@@ -135,10 +204,10 @@ export function CampaignDialog({
                 setStatus(event.target.value as typeof status)
               }
             >
+              {campaign.statusCode === "ARCHIVED" && <option value="ARCHIVED" disabled>Archivada</option>}
               <option value="ACTIVE">Activa</option>
               <option value="PAUSED">En pausa</option>
               <option value="FINISHED">Finalizada</option>
-              <option value="ARCHIVED">Archivada</option>
             </select>
           </>
         )}
@@ -148,12 +217,24 @@ export function CampaignDialog({
         <textarea
           id="campaign-description"
           rows={3}
-          maxLength={180}
+          maxLength={500}
           disabled={isSubmitting}
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="¿Qué aventura espera a tu grupo?"
         />
+        <label className="campaign-visibility-toggle">
+          <input
+            type="checkbox"
+            checked={playerCanViewDescription}
+            disabled={isSubmitting}
+            onChange={(event) => setPlayerCanViewDescription(event.target.checked)}
+          />
+          <span>
+            <strong>Mostrar descripción a los jugadores</strong>
+            <small>El acceso a la campaña sigue limitado a sus miembros.</small>
+          </span>
+        </label>
         {submitError && (
           <p className="form-error" role="alert">
             {submitError}

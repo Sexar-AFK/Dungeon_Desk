@@ -14,7 +14,9 @@ import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import { CampaignsService } from './campaigns.service.js';
 import { CreateCampaignDto } from './dto/create-campaign.dto.js';
 import { CreateInvitationDto } from './dto/create-invitation.dto.js';
+import { DeleteCampaignDto } from './dto/delete-campaign.dto.js';
 import { ListCampaignsQueryDto } from './dto/list-campaigns-query.dto.js';
+import { TransferCampaignOwnershipDto } from './dto/transfer-campaign-ownership.dto.js';
 import { UpdateCampaignMemberDto } from './dto/update-campaign-member.dto.js';
 import { UpdateCampaignDto } from './dto/update-campaign.dto.js';
 
@@ -39,6 +41,11 @@ export class CampaignsController {
     return this.campaignsService.findAll(query, user.id);
   }
 
+  @Get('dashboard')
+  dashboard(@CurrentUser() user: AuthenticatedUser) {
+    return this.campaignsService.findDashboard(user.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.campaignsService.findOne(id, user.id);
@@ -57,6 +64,29 @@ export class CampaignsController {
   @Patch(':id/archive')
   archive(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.campaignsService.archive(id, user.id);
+  }
+
+  @Delete(':id')
+  delete(
+    @Param('id') id: string,
+    @Body() input: DeleteCampaignDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.deleteCampaign(id, input.confirmation, user.id);
+  }
+
+  @Patch(':id/owner')
+  transferOwnership(
+    @Param('id') id: string,
+    @Body() input: TransferCampaignOwnershipDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.campaignsService.transferOwnership(id, input.targetUserId, user.id);
+  }
+
+  @Post(':id/leave')
+  leave(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.campaignsService.leaveCampaign(id, user.id);
   }
 
   @Get(':id/members')
